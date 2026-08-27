@@ -1,0 +1,58 @@
+import { Link } from 'react-router-dom'
+import { ArrowUpRight, Inbox, List, Pencil, Shirt } from 'lucide-react'
+import { formatPesoWhole } from '../../shared/utils/currency'
+
+// Placeholder numbers — will come from the API later.
+const today = {
+  totalSales: 23600,
+  cash: 4800,
+  gcash: 1200,
+}
+
+const actions = [
+  { to: '/staff/stock', label: 'Check Stock', icon: Shirt },
+  { to: '/staff/receive', label: 'Receive Stock', icon: Inbox },
+  { to: '/staff/transfers', label: 'Transfer Stock', icon: ArrowUpRight },
+  { to: '/staff/history', label: 'Sales History', icon: List },
+]
+
+export default function Home() {
+  return (
+    <div className="staff-page">
+      <p className="store-eyebrow">LGA</p>
+      <h1 className="store-title">LGA Bridal Boutique</h1>
+
+      <section className="sales-card">
+        <h2 className="card-sub">Total Sales Today</h2>
+        <p className="sales-total">{formatPesoWhole(today.totalSales)}</p>
+
+        <div className="sales-breakdown">
+          <div>
+            <p className="breakdown-label">Cash</p>
+            <p className="breakdown-value">{formatPesoWhole(today.cash)}</p>
+          </div>
+          <div>
+            <p className="breakdown-label">Gcash</p>
+            <p className="breakdown-value">{formatPesoWhole(today.gcash)}</p>
+          </div>
+        </div>
+      </section>
+
+      <Link className="log-sale-button" to="/staff/sale">
+        <Pencil size={22} />
+        <span>Log a Sale</span>
+      </Link>
+
+      <nav className="home-grid" aria-label="Staff actions">
+        {actions.map(({ to, label, icon: Icon }) => (
+          <Link key={to} className="home-grid-item" to={to}>
+            <span className="home-grid-icon">
+              <Icon size={28} strokeWidth={1.6} />
+            </span>
+            <span>{label}</span>
+          </Link>
+        ))}
+      </nav>
+    </div>
+  )
+}

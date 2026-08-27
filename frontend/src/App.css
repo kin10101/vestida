@@ -1,0 +1,430 @@
+/* Layout styles for the staff and admin mini-apps.
+   Mobile-first: staff layout is designed for phones/tablets,
+   admin collapses to a single column under 760px. */
+
+/* ---------- Login ---------- */
+
+.login-page {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border: 1px solid var(--border-beige);
+  border-radius: 20px;
+  padding: 36px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: var(--shadow);
+}
+
+.login-card h1 {
+  font-family: 'Cormorant Garamond', var(--font-serif);
+  text-align: center;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 4px;
+}
+
+.login-card .brand-mark {
+  text-align: center;
+  color: var(--ink-soft);
+  font-size: 13px;
+  margin-top: -8px;
+  margin-bottom: 8px;
+}
+
+.login-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.login-card input {
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-beige);
+  background: #fff;
+  color: var(--ink);
+}
+
+.login-card input:focus-visible {
+  outline: 2px solid var(--taupe);
+  outline-offset: 1px;
+}
+
+.login-card .login-button {
+  margin-top: 6px;
+  padding: 13px;
+  border: none;
+  border-radius: 14px;
+  background: var(--taupe);
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.login-card .login-button:hover {
+  background: var(--taupe-dark);
+}
+
+.login-hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.login-error {
+  color: #9b2c2c;
+  font-size: 13px;
+  text-align: center;
+  background: #fbeaea;
+  border: 1px solid #f0c5c5;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+/* ---------- Staff app (phone-first) ---------- */
+
+.staff-app {
+  height: 100svh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.staff-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg);
+}
+
+.logo-badge {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--taupe);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.back-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border-beige);
+  color: var(--ink);
+}
+
+.gina-pill {
+  justify-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 20px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border-beige);
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 15px;
+  text-decoration: none;
+}
+
+.settings-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border-beige);
+  color: var(--ink);
+}
+
+.staff-main {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Staff pages: scrollable content area */
+.staff-page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px 20px 32px;
+}
+
+/* Store greeting */
+
+.store-eyebrow {
+  font-size: 13px;
+  letter-spacing: 3px;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+}
+
+.store-title {
+  font-family: var(--font-serif);
+  font-size: 32px;
+  font-weight: 400;
+  margin: 2px 0 18px;
+}
+
+/* Sales summary card */
+
+.sales-card {
+  background: var(--surface);
+  border: 1px solid var(--border-beige);
+  border-radius: 20px;
+  padding: 22px;
+  box-shadow: var(--shadow);
+}
+
+.card-sub {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  font-family: var(--font-sans);
+}
+
+.sales-total {
+  font-family: var(--font-serif);
+  font-size: 46px;
+  font-weight: 400;
+  line-height: 1.1;
+  margin: 6px 0 16px;
+}
+
+.sales-breakdown {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: #e7dfd3;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.sales-breakdown > div {
+  background: var(--bg);
+  padding: 14px 16px;
+}
+
+.breakdown-label {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.breakdown-value {
+  font-size: 18px;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+/* Log a sale hero button */
+
+.log-sale-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 16px;
+  padding: 18px;
+  border-radius: 18px;
+  background: var(--taupe);
+  color: #fff;
+  font-size: 19px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 8px 18px rgba(128, 113, 99, 0.3);
+}
+
+.log-sale-button:active {
+  transform: scale(0.99);
+}
+
+/* Action grid */
+
+.home-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.home-grid-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: clamp(104px, 20dvh, 152px);
+  padding: 20px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-beige);
+  border-radius: 18px;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.home-grid-item:active {
+  transform: scale(0.98);
+}
+
+.home-grid-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+/* Tablet and up: widen the content, keep the layout */
+
+@media (min-width: 640px) {
+  .staff-main {
+    max-width: 640px;
+  }
+
+  .staff-page {
+    padding: 24px 28px 36px;
+  }
+
+  .store-title {
+    font-size: 36px;
+  }
+
+  .sales-total {
+    font-size: 52px;
+  }
+
+  .home-grid {
+    gap: 16px;
+  }
+}
+
+/* ---------- Admin app (desktop-first) ---------- */
+
+.admin-app {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100svh;
+  background: var(--bg);
+}
+
+.admin-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100svh;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 24px 16px;
+  background: var(--taupe);
+  border-right: 1px solid var(--border-beige);
+}
+
+.admin-sidebar .brand {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.admin-sidebar .brand em {
+  color: #ecc4d4;
+  font-style: normal;
+}
+
+.admin-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-nav a {
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: #e9e2da;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.admin-nav a:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.admin-nav a.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.admin-main {
+  padding: 32px;
+  overflow: auto;
+}
+
+.admin-main .page-title {
+  font-size: 30px;
+}
+
+@media (max-width: 760px) {
+  .admin-app {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-sidebar {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .admin-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .admin-main {
+    padding: 20px 16px;
+  }
+}

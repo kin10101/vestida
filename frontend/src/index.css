@@ -1,0 +1,120 @@
+/* Base styles shared by every part of the app.
+   Vestida design language:
+   bg #F4F1EC · surface #FFFFFF · border #CBB9A4 · secondary #807163
+   headers #515151 · sub-headers #807163
+   headings: DM Serif Display (stand-in for Alethia Pro)
+   body:     DM Sans */
+
+:root {
+  --bg: #f4f1ec;
+  --surface: #ffffff;
+  --border-beige: #cbb9a4;
+  --taupe: #807163;
+  --taupe-dark: #6d5f52;
+  --ink: #515151;
+  --ink-soft: #807163;
+  --shadow: 0 8px 24px rgba(81, 81, 81, 0.08);
+
+  --font-sans: 'DM Sans', system-ui, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'DM Serif Display', Georgia, 'Times New Roman', serif;
+
+  font-family: var(--font-sans);
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+p {
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* Page scaffolding used by the sub-pages */
+.page-title {
+  font-family: var(--font-serif);
+  font-size: 26px;
+  font-weight: 400;
+  margin-bottom: 4px;
+}
+
+.page-sub {
+  color: var(--ink-soft);
+  font-size: 14px;
+  margin-bottom: 20px;
+}
+
+.placeholder-note {
+  background: var(--surface);
+  border: 1px dashed var(--border-beige);
+  border-radius: 16px;
+  padding: 18px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+/* Shared components */
+.spinner {
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+}
+
+.spinner-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid rgba(203, 185, 164, 0.3);
+  border-top-color: var(--border-beige);
+  animation: spinner-rotate 0.8s linear infinite;
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.error-message {
+  background: #fbeaea;
+  color: #9b2c2c;
+  border: 1px solid #f0c5c5;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+}
