@@ -368,22 +368,32 @@ export default function Receive() {
 
         <div className="sale-body">
           <div className="segmented-toggle" role="tablist" aria-label="Receive view">
-            <button
-              type="button"
-              className={`segmented-option${tab === 'incoming' ? ' active' : ''}`}
-              onClick={() => setTab('incoming')}
-              aria-pressed={tab === 'incoming'}
-            >
-              Incoming{incomingCount > 0 ? ` (${incomingCount})` : ''}
-            </button>
-            <button
-              type="button"
-              className={`segmented-option${tab === 'received' ? ' active' : ''}`}
-              onClick={() => setTab('received')}
-              aria-pressed={tab === 'received'}
-            >
-              Received
-            </button>
+            {(
+              [
+                { value: 'incoming', label: `Incoming${incomingCount > 0 ? ` (${incomingCount})` : ''}` },
+                { value: 'received', label: 'Received' },
+              ] as const
+            ).map((t) => {
+              const active = tab === t.value
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  className={`segmented-option${active ? ' active' : ''}`}
+                  onClick={() => setTab(t.value)}
+                  aria-pressed={active}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="receive-view-pill"
+                      className="segmented-pill"
+                      transition={{ duration: 0.18, ease: [0.65, 0, 0.35, 1] }}
+                    />
+                  )}
+                  <span className="segmented-label">{t.label}</span>
+                </button>
+              )
+            })}
           </div>
 
           <div className="receive-body">

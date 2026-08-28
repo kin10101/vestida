@@ -112,6 +112,7 @@
 }
 
 .segmented-option {
+  position: relative;
   min-height: 40px;
   border-radius: 999px;
   border: none;
@@ -119,12 +120,25 @@
   color: var(--taupe-dark);
   font-size: 14px;
   font-weight: 700;
+  z-index: 0;
+}
+
+.segmented-pill {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--taupe);
+  box-shadow: 0 4px 12px rgba(128, 113, 99, 0.18);
+  z-index: 0;
+}
+
+.segmented-label {
+  position: relative;
+  z-index: 1;
 }
 
 .segmented-option.active {
-  background: var(--taupe);
   color: #fff;
-  box-shadow: 0 4px 12px rgba(128, 113, 99, 0.18);
 }
 
 .history-search {

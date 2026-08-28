@@ -159,25 +159,35 @@ export default function History() {
         className="staff-page history-page"
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2, ease: 'easeOut' }}
+        transition={{ duration: 0.12, ease: [0.65, 0, 0.35, 1] }}
       >
       <div className="segmented-toggle" role="tablist" aria-label="Sales day filter">
-        <button
-          type="button"
-          className={`segmented-option${day === 'today' ? ' active' : ''}`}
-          onClick={() => setDay('today')}
-          aria-pressed={day === 'today'}
-        >
-          Today
-        </button>
-        <button
-          type="button"
-          className={`segmented-option${day === 'yesterday' ? ' active' : ''}`}
-          onClick={() => setDay('yesterday')}
-          aria-pressed={day === 'yesterday'}
-        >
-          Yesterday
-        </button>
+        {(
+          [
+            { value: 'today', label: 'Today' },
+            { value: 'yesterday', label: 'Yesterday' },
+          ] as const
+        ).map((d) => {
+          const active = day === d.value
+          return (
+            <button
+              key={d.value}
+              type="button"
+              className={`segmented-option${active ? ' active' : ''}`}
+              onClick={() => setDay(d.value)}
+              aria-pressed={active}
+            >
+              {active && (
+                <motion.span
+                  layoutId="history-day-pill"
+                  className="segmented-pill"
+                  transition={{ duration: 0.18, ease: [0.65, 0, 0.35, 1] }}
+                />
+              )}
+              <span className="segmented-label">{d.label}</span>
+            </button>
+          )
+        })}
       </div>
 
       <label className="history-search" htmlFor="history-search">
@@ -242,7 +252,7 @@ export default function History() {
                       initial={{ height: 0, opacity: 0 }}
                       animate={{ height: 'auto', opacity: 1 }}
                       exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.65, 0, 0.35, 1] }}
+                      transition={{ duration: reduceMotion ? 0 : 0.16, ease: [0.65, 0, 0.35, 1] }}
                     >
                       <div className="history-order-body-inner">
                         <div className="history-status-row">
