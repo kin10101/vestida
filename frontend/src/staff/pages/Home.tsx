@@ -10,9 +10,9 @@ const today = {
 }
 
 const actions = [
-  { to: '/staff/stock', label: 'Check Stock', icon: Shirt },
-  { to: '/staff/receive', label: 'Receive Stock', icon: Inbox },
   { to: '/staff/transfers', label: 'Transfer Stock', icon: ArrowUpRight },
+  { to: '/staff/receive', label: 'Receive Stock', icon: Inbox },
+  { to: '/staff/stock', label: 'Check Stock', icon: Shirt },
   { to: '/staff/history', label: 'Sales History', icon: List },
 ]
 

@@ -123,6 +123,10 @@ function dateStamp(): string {
   return new Date().toISOString().slice(2, 10).replace(/-/g, '')
 }
 
+function totalStock(p: CatalogProduct): number {
+  return p.variants.reduce((sum, v) => sum + v.inStock, 0)
+}
+
 export default function Sale() {
   const navigate = useNavigate()
 
@@ -217,7 +221,7 @@ export default function Sale() {
     setColor(first?.color ?? null)
     setSize(first?.size ?? null)
     setQty(1)
-    setAgreedPrice(String(first?.regularPrice ?? ''))
+    setAgreedPrice('')
   }
 
   function pickColor(c: string) {
@@ -392,10 +396,10 @@ export default function Sale() {
                     headRefs.current[p.id] = el
                   }}
                 >
-                  <span className="product-head-text">
+                  <span className="product-card-info">
                     <span className="product-name">{p.name}</span>
-                    <span className="product-price">
-                      from {formatPesoWhole(Math.min(...p.variants.map((v) => v.regularPrice)))}
+                    <span className="product-card-meta">
+                      {totalStock(p) > 0 ? `${totalStock(p)} in stock` : 'Out of stock'}
                     </span>
                   </span>
                 </button>
@@ -478,7 +482,6 @@ export default function Sale() {
 
                         <div className="step-tag">4 · Agreed Price</div>
                         <div className="price-field">
-                          <span>₱</span>
                           <input
                             className="price-input"
                             inputMode="decimal"
@@ -487,12 +490,6 @@ export default function Sale() {
                             placeholder="Agreed price"
                           />
                         </div>
-                        {selectedVariant && (
-                          <p className="regular-hint">
-                            Regular: {formatPesoWhole(selectedVariant.regularPrice)}
-                          </p>
-                        )}
-
                         <button
                           type="button"
                           className="primary-btn panel-action"
@@ -536,7 +533,6 @@ export default function Sale() {
 
         <div className="step-tag">3 · Agreed Price</div>
         <div className="price-field">
-          <span>₱</span>
           <input
             className="price-input"
             inputMode="decimal"
@@ -603,7 +599,6 @@ export default function Sale() {
 
       <label className="field-label" htmlFor="sale-amount">Amount Received</label>
       <div className="amount-row">
-        <span className="amount-peso">₱</span>
         <input
           id="sale-amount"
           className="price-input"
