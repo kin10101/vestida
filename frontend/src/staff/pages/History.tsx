@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { AnimatePresence, motion, MotionConfig, useReducedMotion } from 'framer-motion'
 import { Banknote, ChevronDown, ChevronUp, Landmark, Search, Smartphone } from 'lucide-react'
 import { formatPesoWhole } from '../../shared/utils/currency'
 import { useHeaderTitleValue } from '../headerTitle'
@@ -154,7 +154,13 @@ export default function History() {
   const activeLabel = day === 'today' ? 'Today' : 'Yesterday'
 
   return (
-    <div className="staff-page history-page">
+    <MotionConfig reducedMotion="user">
+      <motion.div
+        className="staff-page history-page"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+      >
       <div className="segmented-toggle" role="tablist" aria-label="Sales day filter">
         <button
           type="button"
@@ -187,14 +193,17 @@ export default function History() {
 
       <div className="chip-scroll history-staff-row" aria-label="Staff filter chips">
         {STAFF_FILTERS.map((option) => (
-          <button
+          <motion.button
             key={option}
             type="button"
             className={`option-chip${staff === option ? ' active' : ''}`}
             onClick={() => setStaff(option)}
+            whileTap={{ scale: 0.94 }}
+            animate={{ scale: staff === option ? 1.04 : 1 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 28 }}
           >
             {option}
-          </button>
+          </motion.button>
         ))}
       </div>
 
@@ -286,6 +295,7 @@ export default function History() {
           })}
         </div>
       )}
-    </div>
+      </motion.div>
+    </MotionConfig>
   )
 }

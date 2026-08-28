@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import { useHeaderTitleValue } from '../headerTitle'
+import { dateGroupLabel, dateKey } from '../../shared/utils/dates'
 
 /* ------------------------------------------------------------------ */
 /* Placeholder data + notes.                                           */
@@ -220,6 +221,18 @@ export default function Transfers() {
   // Mock ledger of outgoing transfers; kept in state so cancelling works.
   const [outgoing, setOutgoing] = useState<OutgoingTransfer[]>(INITIAL_OUTGOING)
 
+  // Outgoing transfers grouped by the date they were sent, newest first.
+  const groupedOutgoing = useMemo(() => {
+    const groups = new Map<string, OutgoingTransfer[]>()
+    for (const t of outgoing) {
+      const key = dateKey(t.sentAt)
+      const arr = groups.get(key) ?? []
+      arr.push(t)
+      groups.set(key, arr)
+    }
+    return [...groups.entries()]
+  }, [outgoing])
+
   const headRefs = useRef<Record<string, HTMLButtonElement | null>>({})
 
   useEffect(() => {
@@ -344,10 +357,13 @@ export default function Transfers() {
         <p className="empty-note">No outgoing transfers yet.</p>
       ) : (
         <div className="transfer-list">
-          {outgoing.map((t) => {
-            const isExpanded = expandedId === t.id
-            return (
-              <div key={t.id} className={`transfer-card${isExpanded ? ' expanded' : ''}`}>
+          {groupedOutgoing.map(([key, transfers]) => (
+            <section className="date-group" key={key}>
+              <h2 className="date-group-label">{dateGroupLabel(transfers[0].sentAt)}</h2>
+              {transfers.map((t) => {
+                const isExpanded = expandedId === t.id
+                return (
+                  <div key={t.id} className={`transfer-card${isExpanded ? ' expanded' : ''}`}>
                 <button
                   type="button"
                   className="transfer-row-toggle"
@@ -402,9 +418,11 @@ export default function Transfers() {
                     </motion.div>
                   )}
                 </AnimatePresence>
-              </div>
-            )
-          })}
+                </div>
+              )
+            })}
+              </section>
+          ))}
         </div>
       )}
     </>
@@ -420,14 +438,17 @@ export default function Transfers() {
       </p>
       <div className="option-row transfer-store-options">
         {STORES.map((s) => (
-          <button
+          <motion.button
             type="button"
             key={s.id}
             className={`option-chip transfer-store-chip${toStoreId === s.id ? ' active' : ''}`}
             onClick={() => setToStoreId(s.id)}
+            whileTap={{ scale: 0.94 }}
+            animate={{ scale: toStoreId === s.id ? 1.04 : 1 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 28 }}
           >
             {s.code}
-          </button>
+          </motion.button>
         ))}
       </div>
     </div>
@@ -447,22 +468,28 @@ export default function Transfers() {
       </label>
 
       <div className="chip-scroll">
-        <button
+        <motion.button
           type="button"
           className={`chip${categoryId === ALL ? ' active' : ''}`}
           onClick={() => setCategoryId(ALL)}
+          whileTap={{ scale: 0.94 }}
+          animate={{ scale: categoryId === ALL ? 1.04 : 1 }}
+          transition={{ type: 'spring', stiffness: 500, damping: 28 }}
         >
           All
-        </button>
+        </motion.button>
         {CATEGORIES.map((c) => (
-          <button
+          <motion.button
             type="button"
             key={c.id}
             className={`chip${categoryId === c.id ? ' active' : ''}`}
             onClick={() => setCategoryId(c.id)}
+            whileTap={{ scale: 0.94 }}
+            animate={{ scale: categoryId === c.id ? 1.04 : 1 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 28 }}
           >
             {c.name}
-          </button>
+          </motion.button>
         ))}
       </div>
 
@@ -511,14 +538,17 @@ export default function Transfers() {
                         <div className="step-tag">1 · Color</div>
                         <div className="option-row">
                           {colors.map((c) => (
-                            <button
+                            <motion.button
                               type="button"
                               key={c}
                               className={`option-chip${color === c ? ' active' : ''}`}
                               onClick={() => pickColor(c)}
+                              whileTap={{ scale: 0.94 }}
+                              animate={{ scale: color === c ? 1.04 : 1 }}
+                              transition={{ type: 'spring', stiffness: 500, damping: 28 }}
                             >
                               {c}
-                            </button>
+                            </motion.button>
                           ))}
                         </div>
 
@@ -527,14 +557,17 @@ export default function Transfers() {
                             <div className="step-tag">2 · Size</div>
                             <div className="option-row">
                               {sizes.map((s) => (
-                                <button
+                                <motion.button
                                   type="button"
                                   key={s ?? 'one-size'}
                                   className={`option-chip${size === s ? ' active' : ''}`}
                                   onClick={() => setSize(s)}
+                                  whileTap={{ scale: 0.94 }}
+                                  animate={{ scale: size === s ? 1.04 : 1 }}
+                                  transition={{ type: 'spring', stiffness: 500, damping: 28 }}
                                 >
                                   {s}
-                                </button>
+                                </motion.button>
                               ))}
                             </div>
                           </>
@@ -774,7 +807,12 @@ export default function Transfers() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="sale-screen">
+      <motion.div
+        className="sale-screen"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+      >
         <AnimatePresence>
           {cancelId && (
             <motion.div
@@ -879,7 +917,7 @@ export default function Transfers() {
         </div>
 
         {footer}
-      </div>
+      </motion.div>
     </MotionConfig>
   )
 }

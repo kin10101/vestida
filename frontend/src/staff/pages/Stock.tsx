@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { AnimatePresence, motion, MotionConfig, useReducedMotion } from 'framer-motion'
 import { ChevronDown, ChevronUp, Search } from 'lucide-react'
 import LoadingSpinner from '../../shared/components/LoadingSpinner'
 import { useHeaderTitleValue } from '../headerTitle'
@@ -248,7 +248,13 @@ export default function Stock() {
   }
 
   return (
-    <div className="staff-page stock-page">
+    <MotionConfig reducedMotion="user">
+      <motion.div
+        className="staff-page stock-page"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+      >
       {loadState === 'loading' ? (
         <LoadingSpinner />
       ) : (
@@ -259,15 +265,18 @@ export default function Stock() {
               {STORES.map((s) => {
                 const active = storeId === s.code
                 return (
-                  <button
+                  <motion.button
                     type="button"
                     key={s.code}
                     className={`store-chip${active ? ' active' : ''}`}
                     aria-pressed={active}
                     onClick={() => setStoreId((cur) => (cur === s.code ? ALL : s.code))}
+                    whileTap={{ scale: 0.94 }}
+                    animate={{ scale: active ? 1.04 : 1 }}
+                    transition={{ type: 'spring', stiffness: 500, damping: 28 }}
                   >
                     {s.code}
-                  </button>
+                  </motion.button>
                 )
               })}
             </div>
@@ -288,22 +297,28 @@ export default function Stock() {
           </label>
 
           <div className="chip-scroll stock-cat-row" aria-label="Category filter chips">
-            <button
+            <motion.button
               type="button"
               className={`chip${categoryId === ALL ? ' active' : ''}`}
               onClick={() => setCategoryId(ALL)}
+              whileTap={{ scale: 0.94 }}
+              animate={{ scale: categoryId === ALL ? 1.04 : 1 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 28 }}
             >
               All
-            </button>
+            </motion.button>
             {CATEGORIES.map((c) => (
-              <button
+              <motion.button
                 type="button"
                 key={c.id}
                 className={`chip${categoryId === c.id ? ' active' : ''}`}
                 onClick={() => setCategoryId(c.id)}
+                whileTap={{ scale: 0.94 }}
+                animate={{ scale: categoryId === c.id ? 1.04 : 1 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 28 }}
               >
                 {c.name}
-              </button>
+              </motion.button>
             ))}
           </div>
 
@@ -385,6 +400,7 @@ export default function Stock() {
           )}
         </>
       )}
-    </div>
+      </motion.div>
+    </MotionConfig>
   )
 }

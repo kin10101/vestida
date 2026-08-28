@@ -1906,6 +1906,25 @@
   gap: 10px;
 }
 
+.date-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.date-group + .date-group {
+  margin-top: 4px;
+}
+
+.date-group-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding: 2px 4px 0;
+}
+
 .transfer-card {
   background: var(--surface);
   border: 1px solid var(--border-beige);

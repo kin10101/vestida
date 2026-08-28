@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { AnimatePresence, motion, MotionConfig } from 'framer-motion'
 import { Check, ChevronDown, ChevronUp, Inbox } from 'lucide-react'
 import { useHeaderTitleValue } from '../headerTitle'
+import { dateGroupLabel, dateKey } from '../../shared/utils/dates'
 
 /* ------------------------------------------------------------------ */
 /* Placeholder data + notes.                                           */
@@ -136,6 +137,18 @@ export default function Receive() {
     [incoming],
   )
 
+  // Received batches grouped by the date they were checked in, newest first.
+  const groupedReceived = useMemo(() => {
+    const groups = new Map<string, ReceivedBatch[]>()
+    for (const b of received) {
+      const key = dateKey(b.receivedAt)
+      const arr = groups.get(key) ?? []
+      arr.push(b)
+      groups.set(key, arr)
+    }
+    return [...groups.entries()]
+  }, [received])
+
   const confirmed = incoming.find((b) => b.id === confirmId) ?? null
 
   function receiveBatch() {
@@ -245,10 +258,13 @@ export default function Receive() {
       <p className="empty-note">Nothing received yet.</p>
     ) : (
       <div className="transfer-list">
-        {received.map((b) => {
-          const isExpanded = expandedId === b.id
-          return (
-            <div key={b.id} className={`transfer-card${isExpanded ? ' expanded' : ''}`}>
+        {groupedReceived.map(([key, batches]) => (
+          <section className="date-group" key={key}>
+            <h2 className="date-group-label">{dateGroupLabel(batches[0].receivedAt)}</h2>
+            {batches.map((b) => {
+              const isExpanded = expandedId === b.id
+              return (
+                <div key={b.id} className={`transfer-card${isExpanded ? ' expanded' : ''}`}>
               <button
                 type="button"
                 className="transfer-row-toggle"
@@ -294,6 +310,8 @@ export default function Receive() {
             </div>
           )
         })}
+          </section>
+        ))}
       </div>
     )
 
@@ -301,7 +319,12 @@ export default function Receive() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="sale-screen">
+      <motion.div
+        className="sale-screen"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+      >
         <AnimatePresence>
           {confirmed && (
             <motion.div
@@ -393,7 +416,7 @@ export default function Receive() {
             </Link>
           </div>
         )}
-      </div>
+      </motion.div>
     </MotionConfig>
   )
 }

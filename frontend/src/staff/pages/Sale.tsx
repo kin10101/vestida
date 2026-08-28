@@ -360,22 +360,28 @@ export default function Sale() {
       </label>
 
       <div className="chip-scroll">
-        <button
+        <motion.button
           type="button"
           className={`chip${categoryId === ALL ? ' active' : ''}`}
           onClick={() => setCategoryId(ALL)}
+          whileTap={{ scale: 0.94 }}
+          animate={{ scale: categoryId === ALL ? 1.04 : 1 }}
+          transition={{ type: 'spring', stiffness: 500, damping: 28 }}
         >
           All
-        </button>
+        </motion.button>
         {CATEGORIES.map((c) => (
-          <button
+          <motion.button
             type="button"
             key={c.id}
             className={`chip${categoryId === c.id ? ' active' : ''}`}
             onClick={() => setCategoryId(c.id)}
+            whileTap={{ scale: 0.94 }}
+            animate={{ scale: categoryId === c.id ? 1.04 : 1 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 28 }}
           >
             {c.name}
-          </button>
+          </motion.button>
         ))}
       </div>
 
@@ -424,14 +430,17 @@ export default function Sale() {
                         <div className="step-tag">1 · Color</div>
                         <div className="option-row">
                           {colors.map((c) => (
-                            <button
+                            <motion.button
                               type="button"
                               key={c}
                               className={`option-chip${color === c ? ' active' : ''}`}
                               onClick={() => pickColor(c)}
+                              whileTap={{ scale: 0.94 }}
+                              animate={{ scale: color === c ? 1.04 : 1 }}
+                              transition={{ type: 'spring', stiffness: 500, damping: 28 }}
                             >
                               {c}
-                            </button>
+                            </motion.button>
                           ))}
                         </div>
 
@@ -440,14 +449,17 @@ export default function Sale() {
                             <div className="step-tag">2 · Size</div>
                             <div className="option-row">
                               {sizes.map((s) => (
-                                <button
+                                <motion.button
                                   type="button"
                                   key={s ?? 'one-size'}
                                   className={`option-chip${size === s ? ' active' : ''}`}
                                   onClick={() => setSize(s)}
+                                  whileTap={{ scale: 0.94 }}
+                                  animate={{ scale: size === s ? 1.04 : 1 }}
+                                  transition={{ type: 'spring', stiffness: 500, damping: 28 }}
                                 >
                                   {s}
-                                </button>
+                                </motion.button>
                               ))}
                             </div>
                           </>
@@ -571,16 +583,19 @@ export default function Sale() {
         {PAYMENT_METHODS.map((m) => {
           const Icon = m.icon
           return (
-            <button
+            <motion.button
               type="button"
               key={m.id}
               className={`method-chip${method === m.id ? ' active' : ''}`}
               aria-pressed={method === m.id}
               onClick={() => setMethod(m.id)}
+              whileTap={{ scale: 0.94 }}
+              animate={{ scale: method === m.id ? 1.04 : 1 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 28 }}
             >
               <Icon size={16} />
               {m.label}
-            </button>
+            </motion.button>
           )
         })}
       </div>
@@ -622,15 +637,18 @@ export default function Sale() {
       <span className="field-label field-label-sm">Care of</span>
       <div className="option-row">
         {STAFF.map((s) => (
-          <button
+          <motion.button
             type="button"
             key={s}
             className={`option-chip${careOf === s ? ' active' : ''}`}
             aria-pressed={careOf === s}
             onClick={() => setCareOf(s)}
+            whileTap={{ scale: 0.94 }}
+            animate={{ scale: careOf === s ? 1.04 : 1 }}
+            transition={{ type: 'spring', stiffness: 500, damping: 28 }}
           >
             {s}
-          </button>
+          </motion.button>
         ))}
       </div>
 
