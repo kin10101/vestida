@@ -7,7 +7,7 @@ export type OrderStatus =
   | 'released'
   | 'cancelled'
 
-export type PaymentMethod = 'cash' | 'gcash' | 'bank' | 'card'
+export type PaymentMethod = 'cash' | 'gcash' | 'bank'
 
 /** One sale — possibly several pieces paid together. */
 export interface SaleOrder {
