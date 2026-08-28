@@ -424,16 +424,57 @@
 }
 
 .chip-scroll.stock-cat-row {
-  flex-wrap: wrap;
-  overflow: visible;
   margin-top: -2px;
   margin-bottom: 4px;
 }
 
-.chip-scroll.stock-store-row {
-  flex-wrap: wrap;
-  overflow: visible;
-  margin-bottom: 2px;
+/* Store scope selector — rectangular segmented control, distinct from
+   the pill-shaped category chips. */
+
+.store-filter-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0 0 8px;
+}
+
+.store-filter {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.store-filter::-webkit-scrollbar {
+  display: none;
+}
+
+.store-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 8px 20px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border-beige);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.store-chip:hover:not(.active) {
+  border-color: var(--taupe-dark);
+}
+
+.store-chip.active {
+  background: var(--taupe);
+  border-color: var(--taupe);
+  color: #fff;
 }
 
 .stock-context {
@@ -940,6 +981,7 @@
   flex-shrink: 0;
   background: var(--surface);
   border-top: 1px solid var(--border-beige);
+  box-shadow: 0 -8px 20px rgba(81, 81, 81, 0.12);
   padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
 }
 
@@ -1049,7 +1091,7 @@
   gap: 8px;
   background: var(--surface);
   border: 1px solid var(--border-beige);
-  border-radius: 14px;
+  border-radius: 10px;
   padding: 0 12px;
   margin: 8px 0 12px;
   color: var(--taupe);
@@ -1069,6 +1111,11 @@
   display: flex;
   gap: 8px;
   overflow-x: auto;
+  /* Prevent the row from being shrunk by the parent flex column when the page
+     has vertical overflow. overflow-x:auto makes overflow-y compute to auto,
+     which zeroes the automatic minimum size and lets flex-shrink collapse the
+     chips to a sliver (burying them under the list below). */
+  flex-shrink: 0;
   margin-bottom: 12px;
   padding-bottom: 2px;
   scrollbar-width: none;
@@ -1194,18 +1241,38 @@
   margin: 14px 0 8px;
 }
 
+.step-tag .per-unit {
+  font-style: normal;
+  color: var(--accent, #a0785a);
+  background: rgba(160, 120, 90, 0.12);
+  border: 1px solid rgba(160, 120, 90, 0.35);
+  border-radius: 4px;
+  padding: 1px 5px;
+  letter-spacing: 0.8px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
 .variant-panel-title + .step-tag {
   margin-top: 4px;
 }
 
 .option-row {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
   margin-bottom: 4px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.option-row::-webkit-scrollbar {
+  display: none;
 }
 
 .option-chip {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   min-height: 44px;
@@ -1284,7 +1351,7 @@
   width: 100%;
   min-height: 44px;
   border: 1px solid var(--border-beige);
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 10px 12px;
   background: var(--surface);
   color: var(--ink);
@@ -1384,7 +1451,7 @@
 .order-card {
   background: var(--surface);
   border: 1px solid var(--border-beige);
-  border-radius: 16px;
+  border-radius: 20px;
   overflow: hidden;
 }
 
@@ -1405,8 +1472,8 @@
 }
 
 .order-item-name {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   color: var(--ink);
 }
 
@@ -1425,7 +1492,7 @@
 }
 
 .order-item-amount {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   color: var(--ink);
   white-space: nowrap;
@@ -1459,7 +1526,8 @@
 
 .footer-total-value {
   font-family: var(--font-serif);
-  font-size: 22px;
+  font-size: 26px;
+  font-weight: 700;
   color: var(--ink);
 }
 
@@ -1531,13 +1599,13 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-  min-height: 56px;
+  min-height: 60px;
   padding: 10px 4px;
   border-radius: 14px;
   border: 1px solid var(--border-beige);
   background: var(--surface);
   color: var(--taupe-dark);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -1553,8 +1621,78 @@
   gap: 8px;
 }
 
-.checkout-note {
-  margin-top: 10px;
+/* Checkout emphasis: payment front and center, optional fields de-emphasized */
+
+.checkout-body .field-label {
+  margin: 20px 0 8px;
+}
+
+.field-label-lg {
+  font-size: 12px;
+  letter-spacing: 1.2px;
+  color: var(--ink);
+}
+
+.field-label-sm {
+  color: var(--ink-soft);
+  margin: 14px 0 6px;
+}
+
+.checkout-body .price-input {
+  min-height: 52px;
+  font-size: 16px;
+}
+
+.checkout-body .text-input {
+  min-height: 40px;
+  font-size: 13px;
+}
+
+.checkout-body .method-chip.active,
+.checkout-body .option-chip.active {
+  background: var(--taupe-tint);
+  border-color: var(--taupe);
+  color: var(--taupe-dark);
+}
+
+.amount-fill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-height: 52px;
+  padding: 0 14px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--taupe);
+  color: var(--taupe-dark);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.amount-fill-btn:hover {
+  background: var(--taupe-tint);
+}
+
+.optional-heading {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 22px 0 2px;
+  padding-top: 18px;
+  border-top: 1px solid #efe8dd;
+}
+
+.complete-sale-btn {
+  background: var(--ink-dark);
+  font-size: 16px;
+}
+
+.complete-sale-btn:hover {
+  background: #26211b;
 }
 
 .balance-note {
@@ -1924,7 +2062,6 @@
 }
 
 .transfer-store-options {
-  flex-wrap: wrap;
   margin-top: 12px;
 }
 

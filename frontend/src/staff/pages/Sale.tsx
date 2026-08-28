@@ -480,14 +480,14 @@ export default function Sale() {
                           </button>
                         </div>
 
-                        <div className="step-tag">4 · Agreed Price</div>
+                        <div className="step-tag">4 · Agreed Price <em className="per-unit">per unit</em></div>
                         <div className="price-field">
                           <input
                             className="price-input"
                             inputMode="decimal"
                             value={agreedPrice}
                             onChange={(e) => setAgreedPrice(e.target.value)}
-                            placeholder="Agreed price"
+                            placeholder="Agreed price per unit"
                           />
                         </div>
                         <button
@@ -531,14 +531,14 @@ export default function Sale() {
           placeholder="Fabric, color, measurements..."
         />
 
-        <div className="step-tag">3 · Agreed Price</div>
+        <div className="step-tag">3 · Agreed Price <em className="per-unit">per unit</em></div>
         <div className="price-field">
           <input
             className="price-input"
             inputMode="decimal"
             value={mtoPrice}
             onChange={(e) => setMtoPrice(e.target.value)}
-            placeholder="Total price"
+            placeholder="Agreed price per unit"
           />
         </div>
 
@@ -557,29 +557,16 @@ export default function Sale() {
   )
 
   const checkoutBody = (
-    <>
+    <div className="checkout-body">
       <button type="button" className="checkout-back" onClick={() => setStep('entry')}>
         <ArrowLeft size={15} />
         Back to order
       </button>
 
-      <h2 className="order-section-title">Order Summary</h2>
+      <h2 className="order-section-title">Order</h2>
       {orderList}
-      <div className="summary-total-row">
-        <span>Total</span>
-        <span className="summary-total-value">{formatPesoWhole(total)}</span>
-      </div>
 
-      <label className="field-label" htmlFor="sale-customer">Customer Name</label>
-      <input
-        id="sale-customer"
-        className="text-input"
-        value={customerName}
-        onChange={(e) => setCustomerName(e.target.value)}
-        placeholder="Name (optional)"
-      />
-
-      <span className="field-label">Payment Method</span>
+      <h2 className="field-label field-label-lg">Payment Method</h2>
       <div className="method-row">
         {PAYMENT_METHODS.map((m) => {
           const Icon = m.icon
@@ -588,6 +575,7 @@ export default function Sale() {
               type="button"
               key={m.id}
               className={`method-chip${method === m.id ? ' active' : ''}`}
+              aria-pressed={method === m.id}
               onClick={() => setMethod(m.id)}
             >
               <Icon size={16} />
@@ -597,7 +585,7 @@ export default function Sale() {
         })}
       </div>
 
-      <label className="field-label" htmlFor="sale-amount">Amount Received</label>
+      <label className="field-label field-label-lg" htmlFor="sale-amount">Payment Amount</label>
       <div className="amount-row">
         <input
           id="sale-amount"
@@ -605,19 +593,12 @@ export default function Sale() {
           inputMode="decimal"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          placeholder="Amount received"
+          placeholder="Enter payment amount"
         />
-        <button type="button" className="text-btn" onClick={() => setAmount(String(total))}>
+        <button type="button" className="amount-fill-btn" onClick={() => setAmount(String(total))}>
           Full amount
         </button>
       </div>
-
-      <input
-        className="text-input checkout-note"
-        value={note}
-        onChange={(e) => setNote(e.target.value)}
-        placeholder='Note (e.g. "downpayment")'
-      />
 
       {paid > 0 && !paidInFull && (
         <div className="balance-note">
@@ -627,20 +608,41 @@ export default function Sale() {
       )}
       {paidInFull && <div className="paid-note">Paid in full</div>}
 
-      <span className="field-label">Care of</span>
+      <h2 className="optional-heading">Optional Details</h2>
+
+      <label className="field-label field-label-sm" htmlFor="sale-customer">Customer Name</label>
+      <input
+        id="sale-customer"
+        className="text-input"
+        value={customerName}
+        onChange={(e) => setCustomerName(e.target.value)}
+        placeholder="Name (optional)"
+      />
+
+      <span className="field-label field-label-sm">Care of</span>
       <div className="option-row">
         {STAFF.map((s) => (
           <button
             type="button"
             key={s}
             className={`option-chip${careOf === s ? ' active' : ''}`}
+            aria-pressed={careOf === s}
             onClick={() => setCareOf(s)}
           >
             {s}
           </button>
         ))}
       </div>
-    </>
+
+      <label className="field-label field-label-sm" htmlFor="sale-note">Note</label>
+      <input
+        id="sale-note"
+        className="text-input"
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder='e.g. "downpayment"'
+      />
+    </div>
   )
 
   const doneBody = (
@@ -665,7 +667,7 @@ export default function Sale() {
           <span>{formatPesoWhole(total)}</span>
         </div>
         <div className="summary-row">
-          <span>{paid > 0 ? 'Paid' : 'Amount received'}</span>
+          <span>{paid > 0 ? 'Paid' : 'Payment'}</span>
           <span>{formatPesoWhole(paid)}</span>
         </div>
         <div className="summary-row">
@@ -732,7 +734,7 @@ export default function Sale() {
             <span>{formatPesoWhole(balance)}</span>
           </div>
         )}
-        <button type="button" className="primary-btn" onClick={completeSale}>
+        <button type="button" className="primary-btn complete-sale-btn" onClick={completeSale}>
           Complete Sale
         </button>
       </motion.div>

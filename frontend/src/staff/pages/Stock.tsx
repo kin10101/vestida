@@ -200,10 +200,6 @@ function variantCounts(v: StockVariant, store: string): StoreCounts {
   return v.stores[store] ?? { available: 0, reserved: 0, inTransit: 0 }
 }
 
-function storeName(code: string): string {
-  return STORES.find((s) => s.code === code)?.name ?? code
-}
-
 type LoadState = 'loading' | 'ready'
 
 export default function Stock() {
@@ -257,29 +253,29 @@ export default function Stock() {
         <LoadingSpinner />
       ) : (
         <>
-          <div className="chip-scroll stock-store-row" aria-label="Store filter chips">
-            <button
-              type="button"
-              className={`chip${storeId === ALL ? ' active' : ''}`}
-              onClick={() => setStoreId(ALL)}
-            >
-              All stores
-            </button>
-            {STORES.map((s) => (
-              <button
-                type="button"
-                key={s.code}
-                className={`chip${storeId === s.code ? ' active' : ''}`}
-                onClick={() => setStoreId(s.code)}
-              >
-                {s.code}
-              </button>
-            ))}
-          </div>
+          <div className="store-filter-block">
+            <h2 className="store-filter-label">Filter by Store</h2>
+            <div className="store-filter" role="group" aria-label="Filter by store">
+              {STORES.map((s) => {
+                const active = storeId === s.code
+                return (
+                  <button
+                    type="button"
+                    key={s.code}
+                    className={`store-chip${active ? ' active' : ''}`}
+                    aria-pressed={active}
+                    onClick={() => setStoreId((cur) => (cur === s.code ? ALL : s.code))}
+                  >
+                    {s.code}
+                  </button>
+                )
+              })}
+            </div>
 
-          <p className="stock-context">
-            {storeId === ALL ? 'All stores' : storeName(storeId)} · {contextTotal} available
-          </p>
+            <p className="stock-context">
+              {storeId === ALL ? 'All stores' : storeId} · {contextTotal} available
+            </p>
+          </div>
 
           <label className="stock-search">
             <Search size={17} />
