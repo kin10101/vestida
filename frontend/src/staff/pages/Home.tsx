@@ -9,9 +9,14 @@ const today = {
   gcash: 1200,
 }
 
+// True when at least one piece is inbound (in_transit → this store).
+// TODO: derive from the same query the Receive page uses — count of
+// in_transit units whose transferred_out has to_store_id = my store.
+const hasIncomingStock = true
+
 const actions = [
   { to: '/staff/transfers', label: 'Transfer Stock', icon: ArrowUpRight },
-  { to: '/staff/receive', label: 'Receive Stock', icon: Inbox },
+  { to: '/staff/receive', label: 'Receive Stock', icon: Inbox, alert: true },
   { to: '/staff/stock', label: 'Check Stock', icon: Shirt },
   { to: '/staff/history', label: 'Sales History', icon: List },
 ]
@@ -44,14 +49,18 @@ export default function Home() {
       </Link>
 
       <nav className="home-grid" aria-label="Staff actions">
-        {actions.map(({ to, label, icon: Icon }) => (
-          <Link key={to} className="home-grid-item" to={to}>
-            <span className="home-grid-icon">
-              <Icon size={28} strokeWidth={1.6} />
-            </span>
-            <span>{label}</span>
-          </Link>
-        ))}
+        {actions.map(({ to, label, icon: Icon, alert }) => {
+          const showAlert = Boolean(alert) && hasIncomingStock
+          return (
+            <Link key={to} className="home-grid-item" to={to}>
+              {showAlert && <span className="home-badge" aria-hidden="true" />}
+              <span className="home-grid-icon">
+                <Icon size={28} strokeWidth={1.6} />
+              </span>
+              <span>{label}</span>
+            </Link>
+          )
+        })}
       </nav>
     </div>
   )
