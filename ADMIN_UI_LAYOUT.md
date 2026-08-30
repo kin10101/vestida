@@ -122,7 +122,12 @@ Reuse the same tokens as staff (`#F4F1EC` background, `#807163` taupe primary, D
 | Tablet | 640–1024px | Primary design target |
 | Desktop | > 1024px | Tablet layout with more breathing room, not a separate design |
 
-**Navigation** — a collapsed icon rail (~64px), always visible, replaces a full sidebar. It can auto-expand into labeled items past ~1200px on desktop, and collapses into the staff app's existing bottom-tab / drawer idiom on mobile. One nav component across all three widths, not three separate navs.
+**Navigation** — use one route configuration with responsive presentations:
+- Desktop: a collapsed icon rail (~64px), always visible, with an optional labeled expansion past ~1200px.
+- Tablet: the icon rail remains visible and stays collapsed to preserve working space.
+- Mobile: the rail becomes a fixed bottom navigation bar, using icon-plus-label items for the four or five highest-frequency destinations. Secondary destinations such as Staff, Reports, and Categories live under a `More` item that opens a sheet or menu.
+
+The mobile bar must account for safe-area insets and reserve bottom padding in the page content so it never covers table rows, forms, or primary actions. Active-route styling and permissions come from the same navigation configuration at every width; only the presentation changes.
 
 **Tables → cards below tablet width** — this is the main risk area (Catalog, Inventory, Movements, Orders, Payments are all table-heavy). Build each row as a single component that:
 - renders as a table row with priority columns on tablet/desktop, expanding in place for the rest (same pattern as the staff app's product/order cards), and
