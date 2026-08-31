@@ -1,12 +1,10 @@
 import { useMemo, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { ChevronDown, Plus } from 'lucide-react'
 import { useAdminData } from '../AdminDataContext'
-import type { Category, InventoryUnit, ProductVariant, UnitStatus } from '../data'
+import type { InventoryUnit, ProductVariant, UnitStatus } from '../data'
 import { Drawer, EmptyState, Field, PageHeader, StatusBadge } from '../ui'
 
-const tabs = ['units', 'categories', 'movements'] as const
-
-type InventoryTab = (typeof tabs)[number]
+const PAGE_SIZE = 10
 
 const formatPeso = (value: number) =>
   new Intl.NumberFormat('en-PH', {
@@ -34,11 +32,12 @@ const getProductName = (variantId: string, variants: ProductVariant[], products:
 }
 
 export default function Inventory() {
-  const { state, applyIntake, adjustInventoryUnit, bulkAdjustInventoryUnits, upsertCategory } = useAdminData()
-  const [tab, setTab] = useState<InventoryTab>('units')
+  const { state, applyIntake, adjustInventoryUnit, bulkAdjustInventoryUnits } = useAdminData()
   const [storeFilter, setStoreFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [expandedProductIds, setExpandedProductIds] = useState<string[]>([])
   const [bulkMode, setBulkMode] = useState(false)
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false)
   const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([])
@@ -50,9 +49,6 @@ export default function Inventory() {
   const [intakeOpen, setIntakeOpen] = useState(false)
   const [adjustOpen, setAdjustOpen] = useState(false)
   const [adjustUnitId, setAdjustUnitId] = useState('')
-  const [categoryOpen, setCategoryOpen] = useState(false)
-  const [categoryDraft, setCategoryDraft] = useState('')
-  const [categoryTargetId, setCategoryTargetId] = useState<string | null>(null)
   const [intakeDraft, setIntakeDraft] = useState({
     variantId: state.productVariants[0]?.id ?? '',
     storeId: state.stores[0]?.id ?? '',
@@ -63,10 +59,35 @@ export default function Inventory() {
     staffName: 'Admin',
   })
   const [adjustDraft, setAdjustDraft] = useState<{ status: UnitStatus; note: string; staffName: string }>({
-    status: 'damaged',
+    status: 'in_stock',
     note: '',
     staffName: 'Admin',
   })
+
+  const catalogStockOverview = useMemo(() => {
+    const stockScope = state.inventoryUnits.filter((unit) => storeFilter === 'all' || unit.storeId === storeFilter)
+
+    return state.products.map((product) => {
+      const variants = state.productVariants.filter((variant) => variant.productId === product.id)
+      const variantIdSet = new Set(variants.map((variant) => variant.id))
+      const units = stockScope.filter((unit) => variantIdSet.has(unit.variantId))
+      const countStatus = (status: UnitStatus) => units.filter((unit) => unit.status === status).length
+
+      return {
+        product,
+        variants: variants.map((variant) => {
+          const variantUnits = units.filter((unit) => unit.variantId === variant.id)
+          return {
+            variant,
+            inStock: variantUnits.filter((unit) => unit.status === 'in_stock').length,
+            sold: variantUnits.filter((unit) => unit.status === 'sold').length,
+          }
+        }),
+        inStock: countStatus('in_stock'),
+        sold: countStatus('sold'),
+      }
+    })
+  }, [state.inventoryUnits, state.productVariants, state.products, storeFilter])
 
   const visibleUnits = useMemo(() => {
     return state.inventoryUnits.filter((unit) => {
@@ -78,34 +99,9 @@ export default function Inventory() {
     })
   }, [search, state.inventoryUnits, state.productVariants, state.products, statusFilter, storeFilter])
 
-  const filteredMovements = useMemo(() => {
-    return state.stockMovements.filter((movement) => {
-      const matchesStore = storeFilter === 'all' || movement.storeId === storeFilter
-      const matchesSearch = !search.trim() || `${movement.reference} ${movement.note} ${movement.staffName}`.toLowerCase().includes(search.trim().toLowerCase())
-      return matchesStore && matchesSearch
-    })
-  }, [search, state.stockMovements, storeFilter])
-
-  const openCategoryModal = (category?: Category) => {
-    setCategoryTargetId(category?.id ?? null)
-    setCategoryDraft(category?.name ?? '')
-    setCategoryOpen(true)
-  }
-
-  const handleSaveCategory = () => {
-    if (!categoryDraft.trim()) {
-      return
-    }
-
-    upsertCategory({
-      id: categoryTargetId ?? undefined,
-      name: categoryDraft,
-      createdAt: categoryTargetId ? state.categories.find((item) => item.id === categoryTargetId)?.createdAt : new Date().toISOString(),
-    })
-    setCategoryOpen(false)
-    setCategoryDraft('')
-    setCategoryTargetId(null)
-  }
+  const totalPages = Math.max(1, Math.ceil(visibleUnits.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const paginatedUnits = visibleUnits.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
   const openAdjustment = (unit: InventoryUnit) => {
     setAdjustUnitId(unit.id)
@@ -137,11 +133,17 @@ export default function Inventory() {
       storeId: intakeDraft.storeId,
       quantity: intakeDraft.quantity,
       costPriceCents: intakeDraft.costPriceCents,
-      sourceNote: intakeDraft.sourceNote || 'Manual intake',
+      sourceNote: intakeDraft.sourceNote || 'Manual stock entry',
       acquiredAt: intakeDraft.acquiredAt,
       staffName: intakeDraft.staffName,
     })
     setIntakeOpen(false)
+  }
+
+  const toggleProductOverview = (productId: string) => {
+    setExpandedProductIds((previous) =>
+      previous.includes(productId) ? previous.filter((id) => id !== productId) : [...previous, productId],
+    )
   }
 
   const toggleUnitSelection = (unitId: string) => {
@@ -175,28 +177,69 @@ export default function Inventory() {
     <div className="admin-page inventory-page">
       <PageHeader
         title="Inventory"
-        subtitle="Units, categories, and movement history across each boutique."
-        actions={
-          <div className="segment-wrap">
-            {tabs.map((item) => (
-              <button
-                key={item}
-                type="button"
-                className={`segmented-tab ${tab === item ? 'active' : ''}`}
-                onClick={() => setTab(item)}
-              >
-                {item === 'units' ? 'Units' : item === 'categories' ? 'Categories' : 'Movements'}
-              </button>
-            ))}
-          </div>
-        }
+        subtitle="Individual stock records across each boutique. Filter by store and status."
       />
 
-      {tab === 'units' ? (
-        <>
+      <section className="admin-panel inventory-overview" aria-labelledby="inventory-overview-title">
+        <div className="panel-header-row inventory-overview-heading">
+          <div>
+            <h3 id="inventory-overview-title">Catalog stock overview</h3>
+            <p>All catalog products. Counts reflect the selected store.</p>
+          </div>
+        </div>
+        <div className="catalog-stock-list">
+          {catalogStockOverview.map(({ product, variants, inStock, sold }) => {
+            const isExpanded = expandedProductIds.includes(product.id)
+            const category = state.categories.find((item) => item.id === product.categoryId)
+
+            return (
+              <div key={product.id} className={`catalog-stock-item ${isExpanded ? 'expanded' : ''}`}>
+                <button
+                  type="button"
+                  className="catalog-stock-row"
+                  onClick={() => toggleProductOverview(product.id)}
+                  aria-expanded={isExpanded}
+                  aria-controls={`catalog-stock-variants-${product.id}`}
+                >
+                  <span className="catalog-stock-product">
+                    <strong>{product.name}</strong>
+                    <small>{category?.name ?? 'Unassigned'} · {variants.length} variation{variants.length === 1 ? '' : 's'}</small>
+                  </span>
+                  <span className="catalog-stock-counts">
+                    <span><strong>{inStock}</strong> in stock</span>
+                    <span><strong>{sold}</strong> sold</span>
+                  </span>
+                  <ChevronDown className="catalog-stock-chevron" size={18} aria-hidden="true" />
+                </button>
+
+                {isExpanded ? (
+                  <div id={`catalog-stock-variants-${product.id}`} className="catalog-variant-list">
+                    {variants.length > 0 ? variants.map(({ variant, inStock: variantInStock, sold: variantSold }) => (
+                      <div key={variant.id} className="catalog-variant-row">
+                        <div>
+                          <strong>{variant.color} {variant.size}</strong>
+                          <small>{variant.sku}</small>
+                        </div>
+                        <div className="catalog-stock-counts">
+                          <span><strong>{variantInStock}</strong> in stock</span>
+                          <span><strong>{variantSold}</strong> sold</span>
+                        </div>
+                      </div>
+                    )) : (
+                      <p className="catalog-variant-empty">No variations have been added.</p>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
+      <>
           <div className="manager-toolbar">
             <div className="toolbar-left">
-              <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)} className="admin-select">
+              <select value={storeFilter} onChange={(event) => { setStoreFilter(event.target.value); setPage(1) }} className="admin-select">
                 <option value="all">All stores</option>
                 {state.stores.map((store) => (
                   <option key={store.id} value={store.id}>
@@ -204,19 +247,16 @@ export default function Inventory() {
                   </option>
                 ))}
               </select>
-              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="admin-select">
+              <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1) }} className="admin-select">
                 <option value="all">All statuses</option>
                 <option value="in_stock">In stock</option>
-                <option value="reserved">Reserved</option>
                 <option value="sold">Sold</option>
-                <option value="damaged">Damaged</option>
-                <option value="returned">Returned</option>
                 <option value="in_transit">In transit</option>
               </select>
             </div>
             <div className="toolbar-right">
               <div className="search-box">
-                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search unit or SKU" aria-label="Search units" />
+                <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search unit or SKU" aria-label="Search units" />
               </div>
               <div className="bulk-toolbar">
                 {!bulkMode ? (
@@ -239,9 +279,9 @@ export default function Inventory() {
                   </button>
                 )}
               </div>
-              <button type="button" className="primary-button" onClick={() => setIntakeOpen(true)} aria-label="Create new stock intake">
+              <button type="button" className="primary-button" onClick={() => setIntakeOpen(true)} aria-label="Add new stock">
                 <Plus size={16} />
-                New intake
+                Add stock
               </button>
             </div>
           </div>
@@ -256,10 +296,7 @@ export default function Inventory() {
                 aria-label="Choose the status to apply to selected units"
               >
                 <option value="in_stock">In stock</option>
-                <option value="reserved">Reserved</option>
                 <option value="sold">Sold</option>
-                <option value="damaged">Damaged</option>
-                <option value="returned">Returned</option>
                 <option value="in_transit">In transit</option>
               </select>
               <input
@@ -287,7 +324,7 @@ export default function Inventory() {
 
           <div className="record-stack compact">
             {visibleUnits.length > 0 ? (
-              visibleUnits.map((unit) => {
+              paginatedUnits.map((unit) => {
                 const variantName = getVariantName(unit.variantId, state.productVariants)
                 const productName = getProductName(unit.variantId, state.productVariants, state.products)
                 const store = state.stores.find((entry) => entry.id === unit.storeId)
@@ -316,8 +353,8 @@ export default function Inventory() {
                       </small>
                     </div>
                     <div className="record-side column align-end">
-                      <span>{store?.name ?? 'Unknown store'}</span>
-                      <StatusBadge label={unit.status} tone={unit.status === 'in_stock' ? 'success' : unit.status === 'damaged' || unit.status === 'returned' ? 'danger' : unit.status === 'in_transit' ? 'info' : 'warning'} />
+                      <span>{store?.isDeleted ? `Deleted store (${store.name})` : store?.name ?? 'Unknown store'}</span>
+                      <StatusBadge label={unit.status === 'in_stock' ? 'In stock' : unit.status === 'in_transit' ? 'In transit' : 'Sold'} tone={unit.status === 'in_stock' ? 'success' : unit.status === 'in_transit' ? 'info' : 'neutral'} />
                     </div>
                     <div className="record-actions compact-actions">
                       <span>{formatPeso(unit.costPriceCents)}</span>
@@ -332,96 +369,30 @@ export default function Inventory() {
               <EmptyState title="No units found" description="Try another status or store filter to see more stock." />
             )}
           </div>
-        </>
-      ) : null}
 
-      {tab === 'categories' ? (
-        <>
-          <div className="manager-toolbar">
-            <div className="toolbar-right full">
-              <button type="button" className="primary-button" onClick={() => openCategoryModal()}>
-                <Plus size={16} />
-                Add category
-              </button>
-            </div>
-          </div>
-
-          <div className="record-stack compact">
-            {state.categories.length > 0 ? (
-              state.categories.map((category) => {
-                const productCount = state.products.filter((product) => product.categoryId === category.id).length
-                return (
-                  <div key={category.id} className="record-card stock-row">
-                    <div className="record-main">
-                      <strong>{category.name}</strong>
-                      <small>{productCount} products linked</small>
-                    </div>
-                    <div className="record-actions compact-actions">
-                      <button type="button" className="text-button" onClick={() => openCategoryModal(category)}>
-                        Rename
-                      </button>
-                    </div>
-                  </div>
-                )
-              })
-            ) : (
-              <EmptyState title="No categories" description="Create your first product category to structure the catalog." />
-            )}
-          </div>
-        </>
-      ) : null}
-
-      {tab === 'movements' ? (
-        <>
-          <div className="manager-toolbar">
-            <div className="toolbar-left">
-              <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)} className="admin-select">
-                <option value="all">All stores</option>
-                {state.stores.map((store) => (
-                  <option key={store.id} value={store.id}>
-                    {store.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="toolbar-right">
-              <div className="search-box">
-                <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Find movement or staff" />
+          {visibleUnits.length > PAGE_SIZE ? (
+            <nav className="pagination-controls" aria-label="Inventory pages">
+              <span>
+                Showing {(currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, visibleUnits.length)} of {visibleUnits.length} units
+              </span>
+              <div className="pagination-actions">
+                <button type="button" className="secondary-button" onClick={() => setPage((previous) => Math.max(1, previous - 1))} disabled={currentPage === 1}>
+                  Previous
+                </button>
+                <span aria-current="page">Page {currentPage} of {totalPages}</span>
+                <button type="button" className="secondary-button" onClick={() => setPage((previous) => Math.min(totalPages, previous + 1))} disabled={currentPage === totalPages}>
+                  Next
+                </button>
               </div>
-            </div>
-          </div>
-
-          <div className="record-stack compact">
-            {filteredMovements.length > 0 ? (
-              filteredMovements.map((movement) => (
-                <div key={movement.id} className="record-card stock-row">
-                  <div className="record-main">
-                    <strong>{movement.reference}</strong>
-                    <small>
-                      {movement.note} · {movement.staffName}
-                    </small>
-                  </div>
-                  <div className="record-side column align-end">
-                    <span>{state.stores.find((item) => item.id === movement.storeId)?.name ?? 'Unknown store'}</span>
-                    <StatusBadge label={movement.kind} tone={movement.kind === 'received' ? 'success' : movement.kind === 'sale' ? 'warning' : 'info'} />
-                  </div>
-                  <div className="record-actions compact-actions">
-                    <span>{new Date(movement.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</span>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <EmptyState title="No movement history" description="Stock movements will appear here after intake or adjustment events." />
-            )}
-          </div>
-        </>
-      ) : null}
+            </nav>
+          ) : null}
+      </>
 
       <Drawer
         open={intakeOpen}
         size="panel"
-        title="New intake"
-        subtitle="Create units and log a receipt entry."
+        title="Add stock"
+        subtitle="Create individual stock records and log their receipt."
         onClose={() => setIntakeOpen(false)}
         footer={
           <div className="modal-footer-actions">
@@ -429,7 +400,7 @@ export default function Inventory() {
               Cancel
             </button>
             <button type="button" className="primary-button" onClick={handleSaveIntake}>
-              Save intake
+              Add stock
             </button>
           </div>
         }
@@ -489,9 +460,7 @@ export default function Inventory() {
           <Field label="Status">
             <select value={adjustDraft.status} onChange={(event) => setAdjustDraft((previous) => ({ ...previous, status: event.target.value as typeof previous.status }))} className="admin-select">
               <option value="in_stock">In stock</option>
-              <option value="reserved">Reserved</option>
-              <option value="damaged">Damaged</option>
-              <option value="returned">Returned</option>
+              <option value="sold">Sold</option>
               <option value="in_transit">In transit</option>
             </select>
           </Field>
@@ -502,27 +471,6 @@ export default function Inventory() {
             <input value={adjustDraft.staffName} onChange={(event) => setAdjustDraft((previous) => ({ ...previous, staffName: event.target.value }))} className="admin-input" />
           </Field>
         </div>
-      </Drawer>
-
-      <Drawer
-        open={categoryOpen}
-        title={categoryTargetId ? 'Rename category' : 'Add category'}
-        subtitle="Create a clean structure for the product mix."
-        onClose={() => setCategoryOpen(false)}
-        footer={
-          <div className="modal-footer-actions">
-            <button type="button" className="secondary-button" onClick={() => setCategoryOpen(false)}>
-              Cancel
-            </button>
-            <button type="button" className="primary-button" onClick={handleSaveCategory}>
-              Save category
-            </button>
-          </div>
-        }
-      >
-        <Field label="Category name">
-          <input value={categoryDraft} onChange={(event) => setCategoryDraft(event.target.value)} className="admin-input" placeholder="Wedding, Accessories, or Occasions" />
-        </Field>
       </Drawer>
     </div>
   )

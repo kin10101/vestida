@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom'
-import { ArrowUpRight, Inbox, List, Pencil, Shirt } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, Inbox, List, Plus, Shirt } from 'lucide-react'
 import { formatPesoWhole } from '../../shared/utils/currency'
 
 // Placeholder numbers — will come from the API later.
 const today = {
-  totalSales: 23600,
+  totalSales: 6000,
   cash: 4800,
   gcash: 1200,
 }
@@ -44,8 +44,9 @@ export default function Home() {
       </section>
 
       <Link className="log-sale-button" to="/staff/sale">
-        <Pencil size={22} />
-        <span>Log a Sale</span>
+        <Plus size={19} strokeWidth={2} aria-hidden="true" />
+        <span className="log-sale-label">Log a Sale</span>
+        <ArrowRight className="log-sale-arrow" size={18} strokeWidth={1.8} aria-hidden="true" />
       </Link>
 
       <nav className="home-grid" aria-label="Staff actions">

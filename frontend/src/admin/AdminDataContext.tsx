@@ -8,6 +8,8 @@ import {
   type OrderDraft,
   type OrderStatus,
   type PaymentDraft,
+  type RefundDraft,
+  type VoidSaleDraft,
   type Product,
   type ProductVariant,
   type StaffMember,
@@ -21,6 +23,7 @@ export interface AdminDataContextValue {
   state: AdminState
   setState: Dispatch<SetStateAction<AdminState>>
   upsertCategory: (category: { id?: string; name: string; createdAt?: string }) => void
+  deleteCategory: (categoryId: string, force?: boolean) => boolean
   upsertProduct: (product: Product) => void
   toggleProductActive: (id: string) => void
   bulkToggleProductActive: (ids: string[], isActive: boolean) => void
@@ -28,18 +31,20 @@ export interface AdminDataContextValue {
   toggleVariantActive: (id: string) => void
   upsertStore: (store: Store) => void
   toggleStoreActive: (id: string) => void
-  bulkToggleStoreActive: (ids: string[], isActive: boolean) => void
+  deleteStore: (id: string, force: boolean) => boolean
   upsertStaff: (member: StaffMember) => void
   toggleStaffActive: (id: string) => void
   bulkToggleStaffActive: (ids: string[], isActive: boolean) => void
   upsertStoreAccess: (record: StoreAccess) => void
-  resetStoreAccess: (storeId: string) => void
+  disconnectStoreDevice: (storeId: string, deviceId: string) => void
   applyIntake: (draft: IntakeDraft) => void
   adjustInventoryUnit: (unitId: string, nextStatus: UnitStatus, note: string, staffName: string) => void
   bulkAdjustInventoryUnits: (unitIds: string[], nextStatus: UnitStatus, note: string, staffName: string) => void
   upsertOrder: (draft: OrderDraft) => void
   updateOrderStatus: (orderId: string, status: OrderStatus) => void
   addPayment: (draft: PaymentDraft) => void
+  voidSale: (draft: VoidSaleDraft) => void
+  refundSale: (draft: RefundDraft) => void
 }
 
 const AdminDataContext = createContext<AdminDataContextValue | undefined>(undefined)
@@ -79,6 +84,41 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
             : [...previous.categories, nextCategory],
         }
       })
+    },
+    deleteCategory: (categoryId, force = false) => {
+      const category = state.categories.find((item) => item.id === categoryId)
+      const productIds = state.products
+        .filter((product) => product.categoryId === categoryId)
+        .map((product) => product.id)
+
+      if (!category || (productIds.length > 0 && !force)) {
+        return false
+      }
+
+      setState((previous) => {
+        const productIdSet = new Set(productIds)
+        const variantIdSet = new Set(
+          previous.productVariants
+            .filter((variant) => productIdSet.has(variant.productId))
+            .map((variant) => variant.id),
+        )
+        const unitIdSet = new Set(
+          previous.inventoryUnits
+            .filter((unit) => variantIdSet.has(unit.variantId))
+            .map((unit) => unit.id),
+        )
+
+        return {
+          ...previous,
+          categories: previous.categories.filter((item) => item.id !== categoryId),
+          products: previous.products.filter((product) => !productIdSet.has(product.id)),
+          productVariants: previous.productVariants.filter((variant) => !variantIdSet.has(variant.id)),
+          inventoryUnits: previous.inventoryUnits.filter((unit) => !unitIdSet.has(unit.id)),
+          stockMovements: previous.stockMovements.filter((movement) => !unitIdSet.has(movement.unitId)),
+        }
+      })
+
+      return true
     },
     upsertProduct: (product) => {
       setState((previous) => {
@@ -191,18 +231,24 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
         ),
       }))
     },
-    bulkToggleStoreActive: (ids, isActive) => {
-      const selected = new Set(ids)
-      if (selected.size === 0) {
-        return
+    deleteStore: (id, force) => {
+      const store = state.stores.find((item) => item.id === id)
+      const hasOperationalRecords = state.staff.some((item) => item.storeId === id)
+        || state.inventoryUnits.some((item) => item.storeId === id && item.status !== 'sold')
+        || state.storeAccess.some((item) => item.storeId === id)
+
+      if (!store || store.isActive || (!force && hasOperationalRecords)) {
+        return false
       }
 
       setState((previous) => ({
         ...previous,
-        stores: previous.stores.map((item) =>
-          selected.has(item.id) ? { ...item, isActive } : item,
-        ),
+        stores: previous.stores.map((item) => item.id === id ? { ...item, isActive: false, isDeleted: true } : item),
+        staff: previous.staff.filter((item) => item.storeId !== id),
+        inventoryUnits: previous.inventoryUnits.filter((item) => item.storeId !== id || item.status === 'sold'),
+        storeAccess: previous.storeAccess.filter((item) => item.storeId !== id),
       }))
+      return true
     },
     upsertStaff: (member) => {
       setState((previous) => {
@@ -254,7 +300,10 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
         const existing = previous.storeAccess.find((item) => item.storeId === record.storeId)
         const nextRecord: StoreAccess = {
           ...record,
-          note: record.note.trim() || 'Shared access synced',
+          username: record.username.trim(),
+          password: record.password || existing?.password || '',
+          passwordUpdatedAt: record.password ? new Date().toISOString() : existing?.passwordUpdatedAt ?? null,
+          devices: existing?.devices ?? record.devices,
         }
 
         return {
@@ -265,12 +314,12 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
         }
       })
     },
-    resetStoreAccess: (storeId) => {
+    disconnectStoreDevice: (storeId, deviceId) => {
       setState((previous) => ({
         ...previous,
         storeAccess: previous.storeAccess.map((item) =>
           item.storeId === storeId
-            ? { ...item, state: 'reset_required', lastResetAt: new Date().toISOString() }
+            ? { ...item, devices: item.devices.filter((device) => device.id !== deviceId) }
             : item,
         ),
       }))
@@ -299,7 +348,7 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
           fromStoreId: null,
           toStoreId: null,
           staffName: draft.staffName || 'Admin',
-          note: `${index === 0 ? draft.sourceNote || 'New intake' : 'Additional intake'} received`,
+          note: `${index === 0 ? draft.sourceNote || 'Stock received' : 'Additional stock received'} received`,
           reference: `INT-${Date.now().toString().slice(-6)}`,
           createdAt,
         }))
@@ -447,11 +496,152 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
             orderId: draft.orderId,
             amountCents: Math.max(0, Math.round(draft.amountCents)),
             method: draft.method,
+            kind: 'payment',
             receivedAt: draft.receivedAt || new Date().toISOString(),
-            receivedBy: draft.receivedBy || 'Admin',
+            receivedBy: draft.receivedBy || 'Staff',
           },
         ],
       }))
+    },
+    voidSale: (draft) => {
+      setState((previous) => {
+        const order = previous.orders.find((item) => item.id === draft.orderId)
+        if (!order || order.status === 'released' || order.status === 'cancelled' || !draft.reason.trim()) {
+          return previous
+        }
+
+        const createdAt = new Date().toISOString()
+        const lines = previous.orderLines.filter((line) => line.orderId === order.id)
+        const unitIds = new Set(lines.flatMap((line) => (line.unitId ? [line.unitId] : [])))
+        const reversiblePayments = previous.payments.filter((payment) => payment.orderId === order.id && payment.kind === 'payment')
+        const reference = `VOID-${order.reference}`
+        const movements = previous.inventoryUnits
+          .filter((unit) => unitIds.has(unit.id))
+          .map((unit) => ({
+            id: makeId('mv'),
+            unitId: unit.id,
+            kind: 'return' as const,
+            storeId: unit.storeId,
+            fromStoreId: order.storeId,
+            toStoreId: unit.storeId,
+            staffName: draft.processedBy || 'Admin',
+            note: `Sale voided: ${draft.reason.trim()}`,
+            reference,
+            createdAt,
+          }))
+
+        return {
+          ...previous,
+          orders: previous.orders.map((item) => item.id === order.id ? { ...item, status: 'cancelled', updatedAt: createdAt } : item),
+          inventoryUnits: previous.inventoryUnits.map((unit) => unitIds.has(unit.id) ? { ...unit, status: 'in_stock' } : unit),
+          stockMovements: [...previous.stockMovements, ...movements],
+          payments: [
+            ...previous.payments,
+            ...reversiblePayments.map((payment) => ({
+              id: makeId('pay'),
+              orderId: order.id,
+              amountCents: -payment.amountCents,
+              method: payment.method,
+              kind: 'void_reversal' as const,
+              receivedAt: createdAt,
+              receivedBy: draft.processedBy || 'Admin',
+            })),
+          ],
+          salesExceptions: [
+            ...previous.salesExceptions,
+            {
+              id: makeId('exception'),
+              orderId: order.id,
+              kind: 'void',
+              reason: draft.reason.trim(),
+              amountCents: reversiblePayments.reduce((sum, payment) => sum + payment.amountCents, 0),
+              method: null,
+              processedBy: draft.processedBy || 'Admin',
+              createdAt,
+              items: lines.map((line) => ({ lineId: line.id, quantity: line.quantity, returnToStock: Boolean(line.unitId) })),
+            },
+          ],
+        }
+      })
+    },
+    refundSale: (draft) => {
+      setState((previous) => {
+        const order = previous.orders.find((item) => item.id === draft.orderId)
+        if (!order || order.status === 'cancelled' || !draft.reason.trim() || draft.amountCents <= 0) {
+          return previous
+        }
+
+        const paid = previous.payments
+          .filter((payment) => payment.orderId === order.id)
+          .reduce((sum, payment) => sum + payment.amountCents, 0)
+        const amountCents = Math.min(Math.round(draft.amountCents), Math.max(paid, 0))
+        if (amountCents <= 0) {
+          return previous
+        }
+
+        const lines = previous.orderLines.filter((line) => line.orderId === order.id)
+        const selectedItems = draft.items
+          .map((item) => {
+            const line = lines.find((entry) => entry.id === item.lineId)
+            if (!line || item.quantity <= 0) return null
+            return { ...item, quantity: Math.min(Math.round(item.quantity), line.quantity), returnToStock: item.returnToStock && item.quantity >= line.quantity }
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null)
+        const unitIds = new Set(
+          selectedItems.flatMap((item) => {
+            const line = lines.find((entry) => entry.id === item.lineId)
+            return item.returnToStock && line?.unitId ? [line.unitId] : []
+          }),
+        )
+        const createdAt = new Date().toISOString()
+        const reference = `REF-${order.reference}`
+        const movements = previous.inventoryUnits
+          .filter((unit) => unitIds.has(unit.id))
+          .map((unit) => ({
+            id: makeId('mv'),
+            unitId: unit.id,
+            kind: 'return' as const,
+            storeId: unit.storeId,
+            fromStoreId: order.storeId,
+            toStoreId: unit.storeId,
+            staffName: draft.processedBy || 'Admin',
+            note: `Refund received: ${draft.reason.trim()}`,
+            reference,
+            createdAt,
+          }))
+
+        return {
+          ...previous,
+          inventoryUnits: previous.inventoryUnits.map((unit) => unitIds.has(unit.id) ? { ...unit, status: 'in_stock' } : unit),
+          stockMovements: [...previous.stockMovements, ...movements],
+          payments: [
+            ...previous.payments,
+            {
+              id: makeId('pay'),
+              orderId: order.id,
+              amountCents: -amountCents,
+              method: draft.method,
+              kind: 'refund',
+              receivedAt: createdAt,
+              receivedBy: draft.processedBy || 'Admin',
+            },
+          ],
+          salesExceptions: [
+            ...previous.salesExceptions,
+            {
+              id: makeId('exception'),
+              orderId: order.id,
+              kind: 'refund',
+              reason: draft.reason.trim(),
+              amountCents,
+              method: draft.method,
+              processedBy: draft.processedBy || 'Admin',
+              createdAt,
+              items: selectedItems,
+            },
+          ],
+        }
+      })
     },
   }), [state])
 

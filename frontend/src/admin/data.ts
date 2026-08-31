@@ -1,15 +1,16 @@
 ﻿export type OrderType = 'ready_made' | 'made_to_order'
 export type OrderStatus = 'pending' | 'in_progress' | 'ready' | 'released' | 'cancelled'
-export type PaymentMethod = 'cash' | 'gcash' | 'bank' | 'card'
-export type UnitStatus = 'in_stock' | 'reserved' | 'sold' | 'damaged' | 'returned' | 'in_transit'
-export type StoreAccessState = 'active' | 'paused' | 'reset_required'
-
+export type PaymentMethod = 'cash' | 'gcash' | 'bank'
+export type PaymentKind = 'payment' | 'refund' | 'void_reversal'
+export type SalesExceptionKind = 'void' | 'refund'
+export type UnitStatus = 'in_stock' | 'sold' | 'in_transit'
 export interface Store {
   id: string
   code: string
   name: string
   address: string
   isActive: boolean
+  isDeleted?: boolean
   createdAt: string
 }
 
@@ -25,7 +26,6 @@ export interface Product {
   name: string
   description: string
   isActive: boolean
-  isTypicallyMto: boolean
   createdAt: string
 }
 
@@ -76,11 +76,19 @@ export interface StaffMember {
   createdAt: string
 }
 
+export interface ConnectedDevice {
+  id: string
+  name: string
+  lastActiveAt: string
+}
+
 export interface StoreAccess {
   storeId: string
-  state: StoreAccessState
-  lastResetAt: string | null
-  note: string
+  username: string
+  password: string
+  isEnabled: boolean
+  passwordUpdatedAt: string | null
+  devices: ConnectedDevice[]
 }
 
 export interface OrderLineItem {
@@ -110,8 +118,36 @@ export interface PaymentRecord {
   orderId: string
   amountCents: number
   method: PaymentMethod
+  kind: PaymentKind
   receivedAt: string
   receivedBy: string
+}
+
+export interface SalesException {
+  id: string
+  orderId: string
+  kind: SalesExceptionKind
+  reason: string
+  amountCents: number
+  method: PaymentMethod | null
+  processedBy: string
+  createdAt: string
+  items: Array<{ lineId: string; quantity: number; returnToStock: boolean }>
+}
+
+export interface VoidSaleDraft {
+  orderId: string
+  reason: string
+  processedBy: string
+}
+
+export interface RefundDraft {
+  orderId: string
+  reason: string
+  amountCents: number
+  method: PaymentMethod
+  processedBy: string
+  items: Array<{ lineId: string; quantity: number; returnToStock: boolean }>
 }
 
 export interface AdminState {
@@ -126,6 +162,7 @@ export interface AdminState {
   orders: OrderRecord[]
   orderLines: OrderLineItem[]
   payments: PaymentRecord[]
+  salesExceptions: SalesException[]
 }
 
 export interface OrderDraft {
@@ -185,11 +222,11 @@ export function createSeedState(): AdminState {
   ]
 
   const products: Product[] = [
-    { id: 'prod-luna', categoryId: 'cat-ready', name: 'Luna Blouse', description: 'Soft ivory blouse with a draped neckline and column cut.', isActive: true, isTypicallyMto: false, createdAt: day(-260) },
-    { id: 'prod-avery', categoryId: 'cat-ready', name: 'Avery Wrap Top', description: 'A flattering wrap silhouette for day-to-evening styling.', isActive: true, isTypicallyMto: false, createdAt: day(-240) },
-    { id: 'prod-helio', categoryId: 'cat-occasion', name: 'Helio Dress', description: 'A pleated satin dress with a structured waistline.', isActive: true, isTypicallyMto: true, createdAt: day(-210) },
-    { id: 'prod-vienna', categoryId: 'cat-bridal', name: 'Vienna Bridal Set', description: 'Minimal bridal set with a long line skirt and sculpted top.', isActive: true, isTypicallyMto: true, createdAt: day(-190) },
-    { id: 'prod-mila', categoryId: 'cat-accessories', name: 'Mila Clutch', description: 'Structured clutch in matte leather with soft gold clasp.', isActive: true, isTypicallyMto: false, createdAt: day(-150) },
+    { id: 'prod-luna', categoryId: 'cat-ready', name: 'Luna Blouse', description: 'Soft ivory blouse with a draped neckline and column cut.', isActive: true, createdAt: day(-260) },
+    { id: 'prod-avery', categoryId: 'cat-ready', name: 'Avery Wrap Top', description: 'A flattering wrap silhouette for day-to-evening styling.', isActive: true, createdAt: day(-240) },
+    { id: 'prod-helio', categoryId: 'cat-occasion', name: 'Helio Dress', description: 'A pleated satin dress with a structured waistline.', isActive: true, createdAt: day(-210) },
+    { id: 'prod-vienna', categoryId: 'cat-bridal', name: 'Vienna Bridal Set', description: 'Minimal bridal set with a long line skirt and sculpted top.', isActive: true, createdAt: day(-190) },
+    { id: 'prod-mila', categoryId: 'cat-accessories', name: 'Mila Clutch', description: 'Structured clutch in matte leather with soft gold clasp.', isActive: true, createdAt: day(-150) },
   ]
 
   const productVariants: ProductVariant[] = [
@@ -207,15 +244,15 @@ export function createSeedState(): AdminState {
   const inventoryUnits: InventoryUnit[] = [
     { id: 'unit-001', variantId: 'var-luna-ivory-s', unitCode: 'UV-1001', storeId: 'store-makati', status: 'in_stock', costPriceCents: 138000, sourceNote: 'Initial intake', acquiredAt: day(-22), createdAt: day(-22) },
     { id: 'unit-002', variantId: 'var-luna-ivory-m', unitCode: 'UV-1002', storeId: 'store-bgc', status: 'in_stock', costPriceCents: 138000, sourceNote: 'Initial intake', acquiredAt: day(-18), createdAt: day(-18) },
-    { id: 'unit-003', variantId: 'var-luna-ivory-s', unitCode: 'UV-1003', storeId: 'store-makati', status: 'reserved', costPriceCents: 138000, sourceNote: 'Hold for customer', acquiredAt: day(-15), createdAt: day(-15) },
+    { id: 'unit-003', variantId: 'var-luna-ivory-s', unitCode: 'UV-1003', storeId: 'store-makati', status: 'in_stock', costPriceCents: 138000, sourceNote: 'Available for sale', acquiredAt: day(-15), createdAt: day(-15) },
     { id: 'unit-004', variantId: 'var-avery-rose-m', unitCode: 'UV-1004', storeId: 'store-quezon', status: 'in_stock', costPriceCents: 152000, sourceNote: 'Initial intake', acquiredAt: day(-30), createdAt: day(-30) },
     { id: 'unit-005', variantId: 'var-helio-midnight-8', unitCode: 'UV-1005', storeId: 'store-bgc', status: 'in_stock', costPriceCents: 234000, sourceNote: 'Mall delivery', acquiredAt: day(-12), createdAt: day(-12) },
     { id: 'unit-006', variantId: 'var-helio-midnight-6', unitCode: 'UV-1006', storeId: 'store-cebu', status: 'in_transit', costPriceCents: 234000, sourceNote: 'Transfer to boutique', acquiredAt: day(-9), createdAt: day(-9) },
-    { id: 'unit-007', variantId: 'var-vienna-ivory-10', unitCode: 'UV-1007', storeId: 'store-makati', status: 'damaged', costPriceCents: 348000, sourceNote: 'Packaging issue', acquiredAt: day(-42), createdAt: day(-42) },
+    { id: 'unit-007', variantId: 'var-vienna-ivory-10', unitCode: 'UV-1007', storeId: 'store-makati', status: 'sold', costPriceCents: 348000, sourceNote: 'Removed from sale', acquiredAt: day(-42), createdAt: day(-42) },
     { id: 'unit-008', variantId: 'var-vienna-ivory-8', unitCode: 'UV-1008', storeId: 'store-davao', status: 'in_stock', costPriceCents: 348000, sourceNote: 'Initial intake', acquiredAt: day(-26), createdAt: day(-26) },
     { id: 'unit-009', variantId: 'var-mila-sand-tote', unitCode: 'UV-1009', storeId: 'store-bgc', status: 'sold', costPriceCents: 108000, sourceNote: 'Sold in branch', acquiredAt: day(-6), createdAt: day(-6) },
     { id: 'unit-010', variantId: 'var-mila-sand-tote', unitCode: 'UV-1010', storeId: 'store-quezon', status: 'in_stock', costPriceCents: 108000, sourceNote: 'Initial intake', acquiredAt: day(-7), createdAt: day(-7) },
-    { id: 'unit-011', variantId: 'var-avery-rose-s', unitCode: 'UV-1011', storeId: 'store-bgc', status: 'returned', costPriceCents: 152000, sourceNote: 'Customer return', acquiredAt: day(-11), createdAt: day(-11) },
+    { id: 'unit-011', variantId: 'var-avery-rose-s', unitCode: 'UV-1011', storeId: 'store-bgc', status: 'in_stock', costPriceCents: 152000, sourceNote: 'Returned to stock', acquiredAt: day(-11), createdAt: day(-11) },
     { id: 'unit-012', variantId: 'var-helio-midnight-8', unitCode: 'UV-1012', storeId: 'store-davao', status: 'in_stock', costPriceCents: 234000, sourceNote: 'Initial intake', acquiredAt: day(-3), createdAt: day(-3) },
   ]
 
@@ -238,11 +275,11 @@ export function createSeedState(): AdminState {
   ]
 
   const storeAccess: StoreAccess[] = [
-    { storeId: 'store-makati', state: 'active', lastResetAt: day(-14), note: 'Shared access operating normally' },
-    { storeId: 'store-bgc', state: 'active', lastResetAt: day(-9), note: 'Shared access operating normally' },
-    { storeId: 'store-quezon', state: 'paused', lastResetAt: day(-18), note: 'Temporary lock after failed sign in prompt' },
-    { storeId: 'store-cebu', state: 'reset_required', lastResetAt: day(-32), note: 'Access reset due to old session token' },
-    { storeId: 'store-davao', state: 'active', lastResetAt: day(-11), note: 'Access active and synced' },
+    { storeId: 'store-makati', username: 'makati', password: 'makati2026', isEnabled: true, passwordUpdatedAt: day(-14), devices: [{ id: 'device-makati-1', name: 'Makati counter iPad', lastActiveAt: day(-1) }] },
+    { storeId: 'store-bgc', username: 'bgc', password: 'bgc2026', isEnabled: true, passwordUpdatedAt: day(-9), devices: [{ id: 'device-bgc-1', name: 'BGC sales tablet', lastActiveAt: day(-2) }] },
+    { storeId: 'store-quezon', username: 'quezon', password: 'quezon2026', isEnabled: false, passwordUpdatedAt: day(-18), devices: [] },
+    { storeId: 'store-cebu', username: 'cebu', password: 'cebu2026', isEnabled: true, passwordUpdatedAt: day(-32), devices: [{ id: 'device-cebu-1', name: 'Cebu inventory terminal', lastActiveAt: day(-3) }] },
+    { storeId: 'store-davao', username: 'davao', password: 'davao2026', isEnabled: true, passwordUpdatedAt: day(-11), devices: [] },
   ]
 
   const orders: OrderRecord[] = [
@@ -263,10 +300,10 @@ export function createSeedState(): AdminState {
   ]
 
   const payments: PaymentRecord[] = [
-    { id: 'pay-1', orderId: 'order-1041', amountCents: 220000, method: 'cash', receivedAt: day(-1), receivedBy: 'Mia' },
-    { id: 'pay-2', orderId: 'order-1042', amountCents: 180000, method: 'gcash', receivedAt: day(-2), receivedBy: 'Joan' },
-    { id: 'pay-3', orderId: 'order-1043', amountCents: 180000, method: 'card', receivedAt: day(-1), receivedBy: 'Pia' },
-    { id: 'pay-4', orderId: 'order-1045', amountCents: 580000, method: 'bank', receivedAt: day(-18), receivedBy: 'Nina' },
+    { id: 'pay-1', orderId: 'order-1041', amountCents: 220000, method: 'cash', kind: 'payment', receivedAt: day(-1), receivedBy: 'Mia' },
+    { id: 'pay-2', orderId: 'order-1042', amountCents: 180000, method: 'gcash', kind: 'payment', receivedAt: day(-2), receivedBy: 'Joan' },
+    { id: 'pay-3', orderId: 'order-1043', amountCents: 180000, method: 'gcash', kind: 'payment', receivedAt: day(-1), receivedBy: 'Pia' },
+    { id: 'pay-4', orderId: 'order-1045', amountCents: 580000, method: 'bank', kind: 'payment', receivedAt: day(-18), receivedBy: 'Nina' },
   ]
 
   return {
@@ -281,6 +318,7 @@ export function createSeedState(): AdminState {
     orders,
     orderLines,
     payments,
+    salesExceptions: [],
   }
 }
 
@@ -300,7 +338,41 @@ export function loadAdminState(): AdminState {
       return createSeedState()
     }
 
-    return parsed
+    const validStatuses = new Set<UnitStatus>(['in_stock', 'sold', 'in_transit'])
+    return {
+      ...parsed,
+      products: parsed.products.map((product) => {
+        const legacyProduct = product as Product & { isTypicallyMto?: boolean }
+        const { isTypicallyMto: _isTypicallyMto, ...currentProduct } = legacyProduct
+        return currentProduct
+      }),
+      inventoryUnits: parsed.inventoryUnits.map((unit) => ({
+        ...unit,
+        status: validStatuses.has(unit.status) ? unit.status : 'in_stock',
+      })),
+      payments: (parsed.payments ?? []).map((payment) => {
+        const legacyPayment = payment as Omit<PaymentRecord, 'method'> & { method: PaymentMethod | 'card'; kind?: PaymentKind }
+        const method: PaymentMethod = legacyPayment.method === 'card' ? 'bank' : legacyPayment.method
+        return {
+          ...legacyPayment,
+          method,
+          kind: legacyPayment.kind ?? 'payment',
+        }
+      }),
+      stores: parsed.stores.map((store) => ({ ...store, isDeleted: store.isDeleted ?? false })),
+      storeAccess: (parsed.storeAccess ?? []).map((record) => {
+        const legacyRecord = record as StoreAccess & { state?: 'active' | 'paused' | 'reset_required'; lastResetAt?: string | null }
+        return {
+          storeId: legacyRecord.storeId,
+          username: legacyRecord.username ?? '',
+          password: legacyRecord.password ?? '',
+          isEnabled: legacyRecord.isEnabled ?? legacyRecord.state !== 'paused',
+          passwordUpdatedAt: legacyRecord.passwordUpdatedAt ?? legacyRecord.lastResetAt ?? null,
+          devices: legacyRecord.devices ?? [],
+        }
+      }),
+      salesExceptions: parsed.salesExceptions ?? [],
+    }
   } catch {
     return createSeedState()
   }
