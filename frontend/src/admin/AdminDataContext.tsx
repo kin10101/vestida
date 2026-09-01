@@ -34,6 +34,7 @@ export interface AdminDataContextValue {
   deleteStore: (id: string, force: boolean) => boolean
   upsertStaff: (member: StaffMember) => void
   toggleStaffActive: (id: string) => void
+  deleteStaff: (id: string) => void
   bulkToggleStaffActive: (ids: string[], isActive: boolean) => void
   upsertStoreAccess: (record: StoreAccess) => void
   disconnectStoreDevice: (storeId: string, deviceId: string) => void
@@ -211,7 +212,6 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
           ...store,
           name,
           code,
-          address: store.address.trim(),
           createdAt: store.createdAt ?? existing?.createdAt ?? new Date().toISOString(),
         }
 
@@ -282,6 +282,12 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
         ),
       }))
     },
+    deleteStaff: (id) => {
+      setState((previous) => ({
+        ...previous,
+        staff: previous.staff.filter((item) => item.id !== id || item.isActive),
+      }))
+    },
     bulkToggleStaffActive: (ids, isActive) => {
       const selected = new Set(ids)
       if (selected.size === 0) {
@@ -327,7 +333,7 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
     applyIntake: (draft) => {
       setState((previous) => {
         const quantity = Math.max(1, Number.isFinite(draft.quantity) ? Math.round(draft.quantity) : 1)
-        const createdAt = new Date(draft.acquiredAt).toISOString()
+        const createdAt = new Date().toISOString()
         const newUnits = Array.from({ length: quantity }, () => ({
           id: makeId('unit'),
           variantId: draft.variantId,
@@ -335,8 +341,6 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
           storeId: draft.storeId,
           status: 'in_stock' as const,
           costPriceCents: draft.costPriceCents,
-          sourceNote: draft.sourceNote || 'New intake',
-          acquiredAt: createdAt,
           createdAt,
         }))
 
@@ -348,7 +352,7 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
           fromStoreId: null,
           toStoreId: null,
           staffName: draft.staffName || 'Admin',
-          note: `${index === 0 ? draft.sourceNote || 'Stock received' : 'Additional stock received'} received`,
+          note: index === 0 ? 'Stock received' : 'Additional stock received',
           reference: `INT-${Date.now().toString().slice(-6)}`,
           createdAt,
         }))
@@ -520,7 +524,7 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
           .map((unit) => ({
             id: makeId('mv'),
             unitId: unit.id,
-            kind: 'return' as const,
+            kind: 'adjustment' as const,
             storeId: unit.storeId,
             fromStoreId: order.storeId,
             toStoreId: unit.storeId,
@@ -558,7 +562,6 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
               method: null,
               processedBy: draft.processedBy || 'Admin',
               createdAt,
-              items: lines.map((line) => ({ lineId: line.id, quantity: line.quantity, returnToStock: Boolean(line.unitId) })),
             },
           ],
         }
@@ -579,41 +582,10 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
           return previous
         }
 
-        const lines = previous.orderLines.filter((line) => line.orderId === order.id)
-        const selectedItems = draft.items
-          .map((item) => {
-            const line = lines.find((entry) => entry.id === item.lineId)
-            if (!line || item.quantity <= 0) return null
-            return { ...item, quantity: Math.min(Math.round(item.quantity), line.quantity), returnToStock: item.returnToStock && item.quantity >= line.quantity }
-          })
-          .filter((item): item is NonNullable<typeof item> => item !== null)
-        const unitIds = new Set(
-          selectedItems.flatMap((item) => {
-            const line = lines.find((entry) => entry.id === item.lineId)
-            return item.returnToStock && line?.unitId ? [line.unitId] : []
-          }),
-        )
         const createdAt = new Date().toISOString()
-        const reference = `REF-${order.reference}`
-        const movements = previous.inventoryUnits
-          .filter((unit) => unitIds.has(unit.id))
-          .map((unit) => ({
-            id: makeId('mv'),
-            unitId: unit.id,
-            kind: 'return' as const,
-            storeId: unit.storeId,
-            fromStoreId: order.storeId,
-            toStoreId: unit.storeId,
-            staffName: draft.processedBy || 'Admin',
-            note: `Refund received: ${draft.reason.trim()}`,
-            reference,
-            createdAt,
-          }))
 
         return {
           ...previous,
-          inventoryUnits: previous.inventoryUnits.map((unit) => unitIds.has(unit.id) ? { ...unit, status: 'in_stock' } : unit),
-          stockMovements: [...previous.stockMovements, ...movements],
           payments: [
             ...previous.payments,
             {
@@ -637,7 +609,6 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
               method: draft.method,
               processedBy: draft.processedBy || 'Admin',
               createdAt,
-              items: selectedItems,
             },
           ],
         }

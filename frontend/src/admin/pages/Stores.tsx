@@ -1,23 +1,23 @@
 ﻿import { useMemo, useState } from 'react'
-import { LockKeyhole, Plus, UserRoundCog } from 'lucide-react'
+import { Plus, UserRoundCog } from 'lucide-react'
 import { useAdminData } from '../AdminDataContext'
 import { Drawer, EmptyState, Field, PageHeader, StatusBadge } from '../ui'
 
 const tabs = ['locations', 'staff', 'access'] as const
 type StoreTab = (typeof tabs)[number]
 
-type StoreDraft = { id: string; code: string; name: string; address: string; isActive: boolean }
+type StoreDraft = { id: string; code: string; name: string; isActive: boolean }
 
 export default function Stores() {
-  const { state, upsertStore, toggleStoreActive, deleteStore, upsertStaff, toggleStaffActive, upsertStoreAccess, disconnectStoreDevice } = useAdminData()
+  const { state, upsertStore, toggleStoreActive, deleteStore, upsertStaff, toggleStaffActive, deleteStaff, upsertStoreAccess, disconnectStoreDevice } = useAdminData()
   const [tab, setTab] = useState<StoreTab>('locations')
   const [storeOpen, setStoreOpen] = useState(false)
   const [staffOpen, setStaffOpen] = useState(false)
   const [accessOpen, setAccessOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [staffStoreFilter, setStaffStoreFilter] = useState('all')
-  const [storeDraft, setStoreDraft] = useState<StoreDraft>({ id: '', code: '', name: '', address: '', isActive: true })
-  const [staffDraft, setStaffDraft] = useState({ id: '', name: '', title: '', storeId: '', isActive: true, canCareOf: false })
+  const [storeDraft, setStoreDraft] = useState<StoreDraft>({ id: '', code: '', name: '', isActive: true })
+  const [staffDraft, setStaffDraft] = useState({ id: '', name: '', title: '', storeId: '', isActive: true })
   const [accessDraft, setAccessDraft] = useState({ storeId: '', username: '', password: '', isEnabled: true })
   const [deletedStore, setDeletedStore] = useState<typeof state.stores[number] | null>(null)
 
@@ -34,12 +34,12 @@ export default function Stores() {
   }, [deletedStore, state.inventoryUnits, state.staff, state.storeAccess])
 
   const openStoreForm = (store?: typeof state.stores[number]) => {
-    setStoreDraft(store ? { id: store.id, code: store.code, name: store.name, address: store.address, isActive: store.isActive } : { id: '', code: '', name: '', address: '', isActive: true })
+    setStoreDraft(store ? { id: store.id, code: store.code, name: store.name, isActive: store.isActive } : { id: '', code: '', name: '', isActive: true })
     setStoreOpen(true)
   }
 
   const openStaffForm = (member?: typeof state.staff[number]) => {
-    setStaffDraft(member ? { id: member.id, name: member.name, title: member.title, storeId: member.storeId, isActive: member.isActive, canCareOf: member.canCareOf } : { id: '', name: '', title: '', storeId: activeStores[0]?.id ?? '', isActive: true, canCareOf: false })
+    setStaffDraft(member ? { id: member.id, name: member.name, title: member.title, storeId: member.storeId, isActive: member.isActive } : { id: '', name: '', title: '', storeId: activeStores[0]?.id ?? '', isActive: true })
     setStaffOpen(true)
   }
 
@@ -91,7 +91,7 @@ export default function Stores() {
         <div className="manager-toolbar"><div className="toolbar-right full"><button type="button" className="primary-button" onClick={() => openStoreForm()}><Plus size={16} />Add location</button></div></div>
         <div className="record-stack compact">
           {activeStores.length > 0 ? activeStores.map((store) => <div key={store.id} className="record-card stock-row">
-            <div className="record-main"><strong>{store.name}</strong><small>{store.code} {store.address ? `- ${store.address}` : '- No address on file'}</small></div>
+            <div className="record-main"><strong>{store.name}</strong></div>
             <div className="record-side column align-end"><StatusBadge label={store.isActive ? 'Active' : 'Inactive'} tone={store.isActive ? 'success' : 'neutral'} /></div>
             <div className="record-actions compact-actions">
               <button type="button" className="text-button" onClick={() => openStoreForm(store)}>Edit</button>
@@ -113,8 +113,8 @@ export default function Stores() {
         <div className="record-stack compact">
           {filteredStaff.length > 0 ? filteredStaff.map((member) => <div key={member.id} className="record-card stock-row">
             <div className="record-main"><strong>{member.name}</strong><small>{member.title} - {state.stores.find((store) => store.id === member.storeId)?.name ?? 'Deleted store'}</small></div>
-            <div className="record-side column align-end"><StatusBadge label={member.isActive ? 'Active' : 'Inactive'} tone={member.isActive ? 'success' : 'neutral'} /><span>{member.canCareOf ? 'Care of' : 'Not eligible'}</span></div>
-            <div className="record-actions compact-actions"><button type="button" className="text-button" onClick={() => openStaffForm(member)}>Edit</button><button type="button" className="text-button" onClick={() => toggleStaffActive(member.id)}>{member.isActive ? 'Deactivate' : 'Activate'}</button></div>
+            <div className="record-side"><StatusBadge label={member.isActive ? 'Active' : 'Inactive'} tone={member.isActive ? 'success' : 'neutral'} /></div>
+            <div className="record-actions compact-actions"><button type="button" className="text-button" onClick={() => openStaffForm(member)}>Edit</button><button type="button" className="text-button" onClick={() => toggleStaffActive(member.id)}>{member.isActive ? 'Deactivate' : 'Activate'}</button>{!member.isActive ? <button type="button" className="text-button danger-text-button" onClick={() => { if (window.confirm(`Delete ${member.name}?`)) deleteStaff(member.id) }}>Delete</button> : null}</div>
           </div>) : <EmptyState title="No staff records" description="No staff members match this store." />}
         </div>
       </> : null}
@@ -124,8 +124,8 @@ export default function Stores() {
           const entry = storeAccessMap[store.id]
           return <div key={store.id} className="record-card access-record">
             <div className="record-main"><strong>{store.name}</strong><small>{entry?.username ? `Username: ${entry.username}` : 'Credentials not set'}</small></div>
-            <div className="record-side column align-end"><StatusBadge label={entry?.isEnabled ? 'Enabled' : 'Disabled'} tone={entry?.isEnabled ? 'success' : 'neutral'} /><span>{entry?.devices.length ?? 0} connected</span></div>
-            <div className="record-actions compact-actions"><button type="button" className="text-button" onClick={() => openAccessForm(store.id)}><LockKeyhole size={16} />Edit credentials</button></div>
+            <div className="record-side"><StatusBadge label={entry?.isEnabled ? 'Enabled' : 'Disabled'} tone={entry?.isEnabled ? 'success' : 'neutral'} /></div>
+            <div className="record-actions compact-actions"><button type="button" className="text-button" onClick={() => openAccessForm(store.id)}>Edit credentials</button></div>
             {entry?.devices.length ? <div className="access-devices">{entry.devices.map((device) => <div key={device.id} className="access-device"><div><strong>{device.name}</strong><small>Last active {new Date(device.lastActiveAt).toLocaleDateString('en-PH')}</small></div><button type="button" className="text-button danger-text-button" onClick={() => { if (window.confirm(`Disconnect ${device.name}?`)) disconnectStoreDevice(store.id, device.id) }}>Disconnect</button></div>)}</div> : null}
           </div>
         }) : <EmptyState title="No locations" description="Add a store to manage its shared credentials." />}
@@ -135,7 +135,6 @@ export default function Stores() {
         <div className="form-grid">
           <Field label="Store code"><input value={storeDraft.code} onChange={(event) => setStoreDraft((previous) => ({ ...previous, code: event.target.value }))} className="admin-input" /></Field>
           <Field label="Store name"><input value={storeDraft.name} onChange={(event) => setStoreDraft((previous) => ({ ...previous, name: event.target.value }))} className="admin-input" /></Field>
-          <Field label="Address"><input value={storeDraft.address} onChange={(event) => setStoreDraft((previous) => ({ ...previous, address: event.target.value }))} className="admin-input" /></Field>
           <label className="check-row large"><input type="checkbox" checked={storeDraft.isActive} onChange={(event) => setStoreDraft((previous) => ({ ...previous, isActive: event.target.checked }))} /><span>Active location</span></label>
         </div>
       </Drawer>
@@ -146,7 +145,6 @@ export default function Stores() {
           <Field label="Role"><input value={staffDraft.title} onChange={(event) => setStaffDraft((previous) => ({ ...previous, title: event.target.value }))} className="admin-input" /></Field>
           <Field label="Assigned location"><select value={staffDraft.storeId} onChange={(event) => setStaffDraft((previous) => ({ ...previous, storeId: event.target.value }))} className="admin-select">{activeStores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}</select></Field>
           <label className="check-row large"><input type="checkbox" checked={staffDraft.isActive} onChange={(event) => setStaffDraft((previous) => ({ ...previous, isActive: event.target.checked }))} /><span>Active staff member</span></label>
-          <label className="check-row large"><input type="checkbox" checked={staffDraft.canCareOf} onChange={(event) => setStaffDraft((previous) => ({ ...previous, canCareOf: event.target.checked }))} /><span>Care of eligibility</span></label>
         </div>
       </Drawer>
 

@@ -54,8 +54,6 @@ export default function Inventory() {
     storeId: state.stores[0]?.id ?? '',
     quantity: 1,
     costPriceCents: state.productVariants[0]?.costPriceCents ?? 150000,
-    sourceNote: '',
-    acquiredAt: new Date().toISOString(),
     staffName: 'Admin',
   })
   const [adjustDraft, setAdjustDraft] = useState<{ status: UnitStatus; note: string; staffName: string }>({
@@ -133,8 +131,6 @@ export default function Inventory() {
       storeId: intakeDraft.storeId,
       quantity: intakeDraft.quantity,
       costPriceCents: intakeDraft.costPriceCents,
-      sourceNote: intakeDraft.sourceNote || 'Manual stock entry',
-      acquiredAt: intakeDraft.acquiredAt,
       staffName: intakeDraft.staffName,
     })
     setIntakeOpen(false)
@@ -429,9 +425,6 @@ export default function Inventory() {
           </Field>
           <Field label="Cost per unit">
             <input type="number" min="0" value={intakeDraft.costPriceCents / 100} onChange={(event) => setIntakeDraft((previous) => ({ ...previous, costPriceCents: Math.round(Number(event.target.value || 0) * 100) }))} className="admin-input" />
-          </Field>
-          <Field label="Source note">
-            <input value={intakeDraft.sourceNote} onChange={(event) => setIntakeDraft((previous) => ({ ...previous, sourceNote: event.target.value }))} className="admin-input" placeholder="Supplier, event, or order reference" />
           </Field>
           <Field label="Staff name">
             <input value={intakeDraft.staffName} onChange={(event) => setIntakeDraft((previous) => ({ ...previous, staffName: event.target.value }))} className="admin-input" placeholder="Admin or receiving staff" />

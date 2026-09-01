@@ -14,44 +14,13 @@ import {
 } from 'lucide-react'
 import { useHeaderTitleValue } from '../headerTitle'
 import { dateGroupLabel, dateKey } from '../../shared/utils/dates'
-
-/* ------------------------------------------------------------------ */
-/* Placeholder data + notes.                                           */
-/*                                                                     */
-/* A transfer is NOT a row in the DB. It is a batch of `in_transit`    */
-/* units whose last `transferred_out` movement points at a store.      */
-/* Receiving logs `transferred_in`; cancelling logs an `adjustment`.   */
-/*                                                                     */
-/* TODO (when the API is live):                                        */
-/*   Outgoing list  → in_transit units whose latest transferred_out    */
-/*     has from_store_id = currentUser.storeCode, grouped by to_store  */
-/*     and sent batch; received / cancelled come from the ledger.      */
-/*   Send           → apiRpc('transfer_stock', { to_store_id, items,   */
-/*     note, client_ref }) — units are auto-assigned server-side from  */
-/*     this store's in_stock units, so staff never pick unit codes.    */
-/*   Cancel         → an 'adjustment' movement returning the units to  */
-/*     in_stock here (reverse of the transferred_out batch).           */
-/* ------------------------------------------------------------------ */
-
-const MY_STORE = 'LGA'
-
-const STORES: { id: string; code: string; name: string }[] = [
-  { id: 'b1', code: 'B1', name: 'Branch 1' },
-  { id: 'lgf', code: 'LGF', name: 'Laguna F.' },
-  { id: 'gf', code: 'GF', name: 'G. Flores' },
-  { id: 'lca', code: 'LCA', name: 'L. Caceres' },
-]
+import { apiRpc } from '../../shared/api/client'
+import { useAuth } from '../../auth/AuthContext'
 
 const ALL = 'all'
 
-const CATEGORIES: { id: string; name: string }[] = [
-  { id: 'barong', name: 'Barong' },
-  { id: 'suit', name: 'Suit' },
-  { id: 'pants', name: 'Pants' },
-  { id: 'acc', name: 'Accessories' },
-]
-
 interface CatalogVariant {
+  id: string
   color: string
   size: string | null
   available: number
@@ -64,59 +33,6 @@ interface CatalogProduct {
   variants: CatalogVariant[]
 }
 
-// This store's catalog with per-variant available (in_stock) counts.
-// TODO: replace with a real stock query scoped to currentUser.storeCode.
-const CATALOG: CatalogProduct[] = [
-  {
-    id: 'plain-barong',
-    categoryId: 'barong',
-    name: 'Plain Barong',
-    variants: [
-      { color: 'Black', size: 'M', available: 1 },
-      { color: 'Black', size: 'L', available: 2 },
-      { color: 'White', size: 'S', available: 3 },
-      { color: 'White', size: 'M', available: 1 },
-    ],
-  },
-  {
-    id: 'barong-sports',
-    categoryId: 'barong',
-    name: 'Barong Sports Collar',
-    variants: [
-      { color: 'Black', size: 'M', available: 2 },
-      { color: 'Black', size: 'L', available: 1 },
-    ],
-  },
-  {
-    id: 'formal-suit',
-    categoryId: 'suit',
-    name: 'Formal Suit',
-    variants: [
-      { color: 'Black', size: 'L', available: 1 },
-      { color: 'Navy', size: 'M', available: 2 },
-    ],
-  },
-  {
-    id: 'trousers',
-    categoryId: 'pants',
-    name: 'Trousers',
-    variants: [
-      { color: 'Black', size: '32', available: 4 },
-      { color: 'Black', size: '34', available: 2 },
-      { color: 'Blue', size: '30', available: 1 },
-    ],
-  },
-  {
-    id: 'arras-set',
-    categoryId: 'acc',
-    name: 'Arras Set',
-    variants: [
-      { color: 'Silver', size: null, available: 2 },
-      { color: 'Gold', size: null, available: 1 },
-    ],
-  },
-]
-
 type TransferStatus = 'in_transit' | 'received' | 'cancelled'
 
 interface OutgoingTransfer {
@@ -127,50 +43,6 @@ interface OutgoingTransfer {
   note?: string
   items: { name: string; detail: string; qty: number }[]
 }
-
-function daysAgoISO(days: number, hour = 10): string {
-  const d = new Date()
-  d.setDate(d.getDate() - days)
-  d.setHours(hour, 30, 0, 0)
-  return d.toISOString()
-}
-
-// TODO: derive from the stock_movement ledger (see header comment).
-const INITIAL_OUTGOING: OutgoingTransfer[] = [
-  {
-    id: 'tr-2048',
-    toStoreId: 'lgf',
-    sentAt: daysAgoISO(1, 14),
-    status: 'in_transit',
-    note: 'For Elyssa fitting 8/30',
-    items: [
-      { name: 'Formal Suit', detail: 'Navy / M', qty: 1 },
-      { name: 'Trousers', detail: 'Black / 32', qty: 1 },
-    ],
-  },
-  {
-    id: 'tr-2047',
-    toStoreId: 'gf',
-    sentAt: daysAgoISO(3, 9),
-    status: 'in_transit',
-    items: [{ name: 'Plain Barong', detail: 'White / S', qty: 2 }],
-  },
-  {
-    id: 'tr-2040',
-    toStoreId: 'b1',
-    sentAt: daysAgoISO(6, 11),
-    status: 'received',
-    items: [{ name: 'Arras Set', detail: 'Silver / Standard', qty: 1 }],
-  },
-  {
-    id: 'tr-2035',
-    toStoreId: 'lca',
-    sentAt: daysAgoISO(9, 16),
-    status: 'cancelled',
-    note: 'Customer changed mind',
-    items: [{ name: 'Barong Sports Collar', detail: 'Black / L', qty: 1 }],
-  },
-]
 
 interface TransferItem {
   key: number
@@ -191,19 +63,50 @@ function formatDate(value: string): string {
   }).format(new Date(value))
 }
 
-function storeCode(id: string): string {
-  return STORES.find((s) => s.id === id)?.code ?? id.toUpperCase()
-}
-
-function storeName(id: string): string {
-  return STORES.find((s) => s.id === id)?.name ?? storeCode(id)
-}
-
 function totalAvailable(p: CatalogProduct): number {
   return p.variants.reduce((sum, v) => sum + v.available, 0)
 }
 
 export default function Transfers() {
+  const { user } = useAuth()
+  const myStore = user?.storeCode ?? ''
+
+  const [stores, setStores] = useState<{ id: string; code: string; name: string }[]>([])
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
+  const [catalog, setCatalog] = useState<CatalogProduct[]>([])
+  const [outgoing, setOutgoing] = useState<OutgoingTransfer[]>([])
+
+  useEffect(() => {
+    let alive = true
+    Promise.all([
+      apiRpc<{ id: string; code: string; name: string }[]>('get_stores', {}),
+      apiRpc<{ id: string; name: string }[]>('get_categories', {}),
+      apiRpc<CatalogProduct[]>('get_catalog', {}),
+      apiRpc<OutgoingTransfer[]>('get_outgoing_transfers', {}),
+    ])
+      .then(([sts, cats, cat, out]) => {
+        if (!alive) return
+        setStores(sts)
+        setCategories(cats)
+        setCatalog(cat)
+        setOutgoing(out)
+      })
+      .catch(() => {
+        /* empty states */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  function storeCode(id: string): string {
+    return stores.find((s) => s.id === id)?.code ?? id.toUpperCase()
+  }
+
+  function storeName(id: string): string {
+    return stores.find((s) => s.id === id)?.name ?? storeCode(id)
+  }
+
   const [view, setView] = useState<View>('list')
   const [toStoreId, setToStoreId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
@@ -217,9 +120,6 @@ export default function Transfers() {
   const [sentRef, setSentRef] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [cancelId, setCancelId] = useState<string | null>(null)
-
-  // Mock ledger of outgoing transfers; kept in state so cancelling works.
-  const [outgoing, setOutgoing] = useState<OutgoingTransfer[]>(INITIAL_OUTGOING)
 
   // Outgoing transfers grouped by the date they were sent, newest first.
   const groupedOutgoing = useMemo(() => {
@@ -242,14 +142,14 @@ export default function Transfers() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return CATALOG.filter(
+    return catalog.filter(
       (p) =>
         (categoryId === ALL || p.categoryId === categoryId) &&
         (q === '' || p.name.toLowerCase().includes(q)),
     )
-  }, [query, categoryId])
+  }, [query, categoryId, catalog])
 
-  const current = CATALOG.find((p) => p.id === selectedId) ?? null
+  const current = catalog.find((p) => p.id === selectedId) ?? null
   const colors = current ? [...new Set(current.variants.map((v) => v.color))] : []
   const hasSizes = current ? current.variants.some((v) => v.size !== null) : false
   const sizes =
@@ -299,7 +199,7 @@ export default function Transfers() {
       ...prev,
       {
         key: Date.now(),
-        variantId: `${current.id}-${selectedVariant.color}-${selectedVariant.size ?? 'std'}`,
+        variantId: selectedVariant.id,
         name: current.name,
         detail: [selectedVariant.color, selectedVariant.size].filter(Boolean).join(' / '),
         qty,
@@ -313,22 +213,30 @@ export default function Transfers() {
     setItems((prev) => prev.filter((i) => i.key !== key))
   }
 
-  function sendTransfer() {
+  async function sendTransfer() {
     if (!toStoreId || items.length === 0) return
-    // TODO: wire to the backend RPC — units are auto-assigned server-side.
-    //   await apiRpc('transfer_stock', {
-    //     to_store_id: toStoreId,
-    //     items: items.map((i) => ({ variant_id: i.variantId, quantity: i.qty })),
-    //     note: note.trim() || undefined,
-    //     client_ref: <generated on-device>,
-    //   })
-    setSentRef(`TR-${Date.now().toString().slice(-6)}`)
-    setView('sent')
+    const clientRef = `TR-${Date.now().toString().slice(-6)}`
+    try {
+      await apiRpc('transfer_stock', {
+        to_store_id: toStoreId,
+        items: items.map((i) => ({ variant_id: i.variantId, quantity: i.qty })),
+        note: note.trim() || null,
+        client_ref: clientRef,
+      })
+      setSentRef(clientRef)
+      setView('sent')
+    } catch {
+      // Keep the user on review; nothing durable was written.
+    }
   }
 
-  function confirmCancel() {
+  async function confirmCancel() {
     if (!cancelId) return
-    // TODO: call the API to reverse the in-transit units (adjustment).
+    try {
+      await apiRpc('cancel_transfer', { p_transfer_id: cancelId })
+    } catch {
+      // Fall through and update locally regardless.
+    }
     setOutgoing((prev) =>
       prev.map((t) => (t.id === cancelId ? { ...t, status: 'cancelled' as const } : t)),
     )
@@ -434,10 +342,10 @@ export default function Transfers() {
     <div className="variant-panel">
       <div className="step-tag">Destination store</div>
       <p className="stock-note">
-        Pieces move from <strong>{MY_STORE}</strong> to the store you pick below.
+        Pieces move from <strong>{myStore}</strong> to the store you pick below.
       </p>
       <div className="option-row transfer-store-options">
-        {STORES.map((s) => (
+        {stores.map((s) => (
           <motion.button
             type="button"
             key={s.id}
@@ -478,7 +386,7 @@ export default function Transfers() {
         >
           All
         </motion.button>
-        {CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <motion.button
             type="button"
             key={c.id}

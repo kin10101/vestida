@@ -38,14 +38,14 @@ Reserve is scrapped and has no planned route.
 
 - Store selector: "All stores" (default) or a single store.
 - Date range toggle: Today / This week / This month.
-- KPI cards: total sales, order count, average order value, payment-method split (cash / GCash / bank / card).
+- KPI cards: total sales, order count, average order value, payment-method split (cash / GCash / bank transfer).
 - Attention list: variants low on stock at a store, units sitting `in_transit` past a threshold, MTO orders stuck in `pending`/`in_progress`.
 - Recent activity feed: latest `stock_movement` rows and latest `sales_order` rows, interleaved.
 
 ### Catalog — `/admin/catalog`
 
-- Table of products: name, category, `is_typically_mto` flag, active toggle, variant count.
-- Add/edit product panel: name, category select, description, `is_typically_mto`, active.
+- Table of products: name, category, active toggle, variant count.
+- Add/edit product panel: name, category select, description, active.
 - Drill into a product (`/admin/catalog/:productId`) to see its variants: color, size, SKU, `regular_price`, and live unit counts by store/status pulled from `inventory_unit`.
 - Add/edit variant: color, size, SKU, `regular_price` (peso input, stored as centavos). Uniqueness on `(product_id, color, size)` should be enforced in the form, not just the DB.
 - Deactivate rather than delete, consistent with `product.is_active`.
@@ -60,9 +60,9 @@ Reserve is scrapped and has no planned route.
 
 This is the physical-piece register — the layer staff never see directly.
 
-- Filters: store, status (`in_stock`, `reserved`, `sold`, `damaged`, `returned`, `in_transit`), category/product/variant, search by `unit_code`.
-- **New Stock / Intake** action: pick a variant + store, enter quantity, cost price, source note, acquired date — creates `inventory_unit` rows and a matching `received` `stock_movement` per unit.
-- **Manual adjustment** action: change a unit's status (e.g. mark `damaged` or `returned`) with a required note — writes an `adjustment` movement.
+- Filters: store, status (`in_stock`, `sold`, `in_transit`), category/product/variant, search by `unit_code`.
+- **New Stock / Intake** action: pick a variant + store, enter quantity and cost price — creates `inventory_unit` rows and a matching `received` `stock_movement` per unit.
+- **Manual adjustment** action: change a unit's supported status with a required note — writes an `adjustment` movement.
 - Row expand or detail page (`/admin/inventory/:unitId`) shows the unit's full movement history — the audit trail for that one physical piece.
 
 ### Inventory — Stock Movement Ledger sub-tab

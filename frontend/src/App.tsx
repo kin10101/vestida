@@ -9,6 +9,7 @@ import Products from './admin/pages/Products'
 import Sales from './admin/pages/Sales'
 import Stores from './admin/pages/Stores'
 import Login from './auth/Login'
+import { AuthProvider } from './auth/AuthContext'
 import RequireRole from './auth/RequireRole'
 import StaffLayout from './staff/StaffLayout'
 import History from './staff/pages/History'
@@ -21,7 +22,8 @@ import Transfers from './staff/pages/Transfers'
 function App() {
   return (
     <BrowserRouter>
-      <AdminDataProvider>
+      <AuthProvider>
+        <AdminDataProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
 
@@ -59,7 +61,8 @@ function App() {
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
-      </AdminDataProvider>
+        </AdminDataProvider>
+      </AuthProvider>
     </BrowserRouter>
   )
 }

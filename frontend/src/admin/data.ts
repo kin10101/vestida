@@ -1,6 +1,6 @@
 ﻿export type OrderType = 'ready_made' | 'made_to_order'
 export type OrderStatus = 'pending' | 'in_progress' | 'ready' | 'released' | 'cancelled'
-export type PaymentMethod = 'cash' | 'gcash' | 'bank'
+export type PaymentMethod = 'cash' | 'gcash' | 'bank_transfer'
 export type PaymentKind = 'payment' | 'refund' | 'void_reversal'
 export type SalesExceptionKind = 'void' | 'refund'
 export type UnitStatus = 'in_stock' | 'sold' | 'in_transit'
@@ -8,7 +8,6 @@ export interface Store {
   id: string
   code: string
   name: string
-  address: string
   isActive: boolean
   isDeleted?: boolean
   createdAt: string
@@ -48,15 +47,13 @@ export interface InventoryUnit {
   storeId: string
   status: UnitStatus
   costPriceCents: number
-  sourceNote: string
-  acquiredAt: string
   createdAt: string
 }
 
 export interface StockMovement {
   id: string
   unitId: string
-  kind: 'received' | 'adjustment' | 'sale' | 'transfer' | 'return'
+  kind: 'received' | 'transferred_out' | 'transferred_in' | 'sold' | 'adjustment'
   storeId: string
   fromStoreId: string | null
   toStoreId: string | null
@@ -72,7 +69,6 @@ export interface StaffMember {
   title: string
   storeId: string
   isActive: boolean
-  canCareOf: boolean
   createdAt: string
 }
 
@@ -132,7 +128,6 @@ export interface SalesException {
   method: PaymentMethod | null
   processedBy: string
   createdAt: string
-  items: Array<{ lineId: string; quantity: number; returnToStock: boolean }>
 }
 
 export interface VoidSaleDraft {
@@ -147,7 +142,6 @@ export interface RefundDraft {
   amountCents: number
   method: PaymentMethod
   processedBy: string
-  items: Array<{ lineId: string; quantity: number; returnToStock: boolean }>
 }
 
 export interface AdminState {
@@ -188,8 +182,6 @@ export interface IntakeDraft {
   storeId: string
   quantity: number
   costPriceCents: number
-  sourceNote: string
-  acquiredAt: string
   staffName: string
 }
 
@@ -203,139 +195,37 @@ export interface PaymentDraft {
 
 export const ADMIN_STORAGE_KEY = 'vestida-admin-state-v1'
 
-const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString()
-
-export function createSeedState(): AdminState {
-  const stores: Store[] = [
-    { id: 'store-makati', code: 'MK', name: 'Makati', address: 'Greenbelt 5, Makati', isActive: true, createdAt: day(-420) },
-    { id: 'store-bgc', code: 'BG', name: 'Bonifacio Global City', address: '5th Avenue, BGC', isActive: true, createdAt: day(-430) },
-    { id: 'store-quezon', code: 'QZ', name: 'Quezon City', address: 'Katipunan Ave, Quezon City', isActive: true, createdAt: day(-380) },
-    { id: 'store-cebu', code: 'CB', name: 'Cebu', address: 'Ayala Center Cebu', isActive: true, createdAt: day(-350) },
-    { id: 'store-davao', code: 'DV', name: 'Davao', address: 'Abreeza Mall, Davao', isActive: true, createdAt: day(-300) },
-  ]
-
-  const categories: Category[] = [
-    { id: 'cat-ready', name: 'Ready to Wear', createdAt: day(-500) },
-    { id: 'cat-occasion', name: 'Occasion', createdAt: day(-440) },
-    { id: 'cat-accessories', name: 'Accessories', createdAt: day(-360) },
-    { id: 'cat-bridal', name: 'Bridal', createdAt: day(-320) },
-  ]
-
-  const products: Product[] = [
-    { id: 'prod-luna', categoryId: 'cat-ready', name: 'Luna Blouse', description: 'Soft ivory blouse with a draped neckline and column cut.', isActive: true, createdAt: day(-260) },
-    { id: 'prod-avery', categoryId: 'cat-ready', name: 'Avery Wrap Top', description: 'A flattering wrap silhouette for day-to-evening styling.', isActive: true, createdAt: day(-240) },
-    { id: 'prod-helio', categoryId: 'cat-occasion', name: 'Helio Dress', description: 'A pleated satin dress with a structured waistline.', isActive: true, createdAt: day(-210) },
-    { id: 'prod-vienna', categoryId: 'cat-bridal', name: 'Vienna Bridal Set', description: 'Minimal bridal set with a long line skirt and sculpted top.', isActive: true, createdAt: day(-190) },
-    { id: 'prod-mila', categoryId: 'cat-accessories', name: 'Mila Clutch', description: 'Structured clutch in matte leather with soft gold clasp.', isActive: true, createdAt: day(-150) },
-  ]
-
-  const productVariants: ProductVariant[] = [
-    { id: 'var-luna-ivory-s', productId: 'prod-luna', color: 'Ivory', size: 'S', sku: 'LUNA-IV-S', regularPriceCents: 220000, costPriceCents: 138000, isActive: true, createdAt: day(-260) },
-    { id: 'var-luna-ivory-m', productId: 'prod-luna', color: 'Ivory', size: 'M', sku: 'LUNA-IV-M', regularPriceCents: 220000, costPriceCents: 138000, isActive: true, createdAt: day(-250) },
-    { id: 'var-avery-rose-s', productId: 'prod-avery', color: 'Rose', size: 'S', sku: 'AVRY-RO-S', regularPriceCents: 245000, costPriceCents: 152000, isActive: true, createdAt: day(-220) },
-    { id: 'var-avery-rose-m', productId: 'prod-avery', color: 'Rose', size: 'M', sku: 'AVRY-RO-M', regularPriceCents: 245000, costPriceCents: 152000, isActive: true, createdAt: day(-220) },
-    { id: 'var-helio-midnight-6', productId: 'prod-helio', color: 'Midnight', size: '6', sku: 'HELIO-NV-6', regularPriceCents: 395000, costPriceCents: 234000, isActive: true, createdAt: day(-200) },
-    { id: 'var-helio-midnight-8', productId: 'prod-helio', color: 'Midnight', size: '8', sku: 'HELIO-NV-8', regularPriceCents: 395000, costPriceCents: 234000, isActive: true, createdAt: day(-198) },
-    { id: 'var-vienna-ivory-8', productId: 'prod-vienna', color: 'Ivory', size: '8', sku: 'VIEN-IR-8', regularPriceCents: 580000, costPriceCents: 348000, isActive: true, createdAt: day(-170) },
-    { id: 'var-vienna-ivory-10', productId: 'prod-vienna', color: 'Ivory', size: '10', sku: 'VIEN-IR-10', regularPriceCents: 580000, costPriceCents: 348000, isActive: true, createdAt: day(-170) },
-    { id: 'var-mila-sand-tote', productId: 'prod-mila', color: 'Sand', size: 'One Size', sku: 'MILA-SD-OS', regularPriceCents: 180000, costPriceCents: 108000, isActive: true, createdAt: day(-120) },
-  ]
-
-  const inventoryUnits: InventoryUnit[] = [
-    { id: 'unit-001', variantId: 'var-luna-ivory-s', unitCode: 'UV-1001', storeId: 'store-makati', status: 'in_stock', costPriceCents: 138000, sourceNote: 'Initial intake', acquiredAt: day(-22), createdAt: day(-22) },
-    { id: 'unit-002', variantId: 'var-luna-ivory-m', unitCode: 'UV-1002', storeId: 'store-bgc', status: 'in_stock', costPriceCents: 138000, sourceNote: 'Initial intake', acquiredAt: day(-18), createdAt: day(-18) },
-    { id: 'unit-003', variantId: 'var-luna-ivory-s', unitCode: 'UV-1003', storeId: 'store-makati', status: 'in_stock', costPriceCents: 138000, sourceNote: 'Available for sale', acquiredAt: day(-15), createdAt: day(-15) },
-    { id: 'unit-004', variantId: 'var-avery-rose-m', unitCode: 'UV-1004', storeId: 'store-quezon', status: 'in_stock', costPriceCents: 152000, sourceNote: 'Initial intake', acquiredAt: day(-30), createdAt: day(-30) },
-    { id: 'unit-005', variantId: 'var-helio-midnight-8', unitCode: 'UV-1005', storeId: 'store-bgc', status: 'in_stock', costPriceCents: 234000, sourceNote: 'Mall delivery', acquiredAt: day(-12), createdAt: day(-12) },
-    { id: 'unit-006', variantId: 'var-helio-midnight-6', unitCode: 'UV-1006', storeId: 'store-cebu', status: 'in_transit', costPriceCents: 234000, sourceNote: 'Transfer to boutique', acquiredAt: day(-9), createdAt: day(-9) },
-    { id: 'unit-007', variantId: 'var-vienna-ivory-10', unitCode: 'UV-1007', storeId: 'store-makati', status: 'sold', costPriceCents: 348000, sourceNote: 'Removed from sale', acquiredAt: day(-42), createdAt: day(-42) },
-    { id: 'unit-008', variantId: 'var-vienna-ivory-8', unitCode: 'UV-1008', storeId: 'store-davao', status: 'in_stock', costPriceCents: 348000, sourceNote: 'Initial intake', acquiredAt: day(-26), createdAt: day(-26) },
-    { id: 'unit-009', variantId: 'var-mila-sand-tote', unitCode: 'UV-1009', storeId: 'store-bgc', status: 'sold', costPriceCents: 108000, sourceNote: 'Sold in branch', acquiredAt: day(-6), createdAt: day(-6) },
-    { id: 'unit-010', variantId: 'var-mila-sand-tote', unitCode: 'UV-1010', storeId: 'store-quezon', status: 'in_stock', costPriceCents: 108000, sourceNote: 'Initial intake', acquiredAt: day(-7), createdAt: day(-7) },
-    { id: 'unit-011', variantId: 'var-avery-rose-s', unitCode: 'UV-1011', storeId: 'store-bgc', status: 'in_stock', costPriceCents: 152000, sourceNote: 'Returned to stock', acquiredAt: day(-11), createdAt: day(-11) },
-    { id: 'unit-012', variantId: 'var-helio-midnight-8', unitCode: 'UV-1012', storeId: 'store-davao', status: 'in_stock', costPriceCents: 234000, sourceNote: 'Initial intake', acquiredAt: day(-3), createdAt: day(-3) },
-  ]
-
-  const stockMovements: StockMovement[] = [
-    { id: 'mv-001', unitId: 'unit-001', kind: 'received', storeId: 'store-makati', fromStoreId: null, toStoreId: null, staffName: 'Mia', note: 'New shipment received', reference: 'PO-1201', createdAt: day(-22) },
-    { id: 'mv-002', unitId: 'unit-005', kind: 'transfer', storeId: 'store-bgc', fromStoreId: 'store-cebu', toStoreId: 'store-bgc', staffName: 'Pia', note: 'Transferred from Cebu', reference: 'TR-204', createdAt: day(-10) },
-    { id: 'mv-003', unitId: 'unit-006', kind: 'adjustment', storeId: 'store-cebu', fromStoreId: 'store-cebu', toStoreId: 'store-cebu', staffName: 'Ari', note: 'Marked in transit', reference: 'ADJ-903', createdAt: day(-9) },
-    { id: 'mv-004', unitId: 'unit-007', kind: 'adjustment', storeId: 'store-makati', fromStoreId: 'store-makati', toStoreId: 'store-makati', staffName: 'Nina', note: 'Damaged goods flagged', reference: 'ADJ-960', createdAt: day(-42) },
-    { id: 'mv-005', unitId: 'unit-009', kind: 'sale', storeId: 'store-bgc', fromStoreId: 'store-bgc', toStoreId: null, staffName: 'Joan', note: 'Sold to customer', reference: 'ORD-10016', createdAt: day(-5) },
-    { id: 'mv-006', unitId: 'unit-011', kind: 'return', storeId: 'store-bgc', fromStoreId: 'store-bgc', toStoreId: null, staffName: 'Rosa', note: 'Return logged', reference: 'RET-911', createdAt: day(-11) },
-    { id: 'mv-007', unitId: 'unit-012', kind: 'received', storeId: 'store-davao', fromStoreId: null, toStoreId: null, staffName: 'Elle', note: 'Fresh seasonal restock', reference: 'PO-3322', createdAt: day(-3) },
-  ]
-
-  const staff: StaffMember[] = [
-    { id: 'staff-1', name: 'Mia Cruz', title: 'Store lead', storeId: 'store-makati', isActive: true, canCareOf: true, createdAt: day(-330) },
-    { id: 'staff-2', name: 'Joan Santos', title: 'Sales associate', storeId: 'store-bgc', isActive: true, canCareOf: true, createdAt: day(-300) },
-    { id: 'staff-3', name: 'Pia Ramos', title: 'Merchandise specialist', storeId: 'store-quezon', isActive: true, canCareOf: false, createdAt: day(-270) },
-    { id: 'staff-4', name: 'Ari Tan', title: 'Inventory clerk', storeId: 'store-cebu', isActive: true, canCareOf: false, createdAt: day(-250) },
-    { id: 'staff-5', name: 'Nina Reyes', title: 'Senior stylist', storeId: 'store-davao', isActive: true, canCareOf: true, createdAt: day(-220) },
-  ]
-
-  const storeAccess: StoreAccess[] = [
-    { storeId: 'store-makati', username: 'makati', password: 'makati2026', isEnabled: true, passwordUpdatedAt: day(-14), devices: [{ id: 'device-makati-1', name: 'Makati counter iPad', lastActiveAt: day(-1) }] },
-    { storeId: 'store-bgc', username: 'bgc', password: 'bgc2026', isEnabled: true, passwordUpdatedAt: day(-9), devices: [{ id: 'device-bgc-1', name: 'BGC sales tablet', lastActiveAt: day(-2) }] },
-    { storeId: 'store-quezon', username: 'quezon', password: 'quezon2026', isEnabled: false, passwordUpdatedAt: day(-18), devices: [] },
-    { storeId: 'store-cebu', username: 'cebu', password: 'cebu2026', isEnabled: true, passwordUpdatedAt: day(-32), devices: [{ id: 'device-cebu-1', name: 'Cebu inventory terminal', lastActiveAt: day(-3) }] },
-    { storeId: 'store-davao', username: 'davao', password: 'davao2026', isEnabled: true, passwordUpdatedAt: day(-11), devices: [] },
-  ]
-
-  const orders: OrderRecord[] = [
-    { id: 'order-1041', storeId: 'store-makati', customerName: 'Alicia Santos', orderType: 'ready_made', status: 'released', reference: 'V-1041', notes: 'Pickup scheduled for Saturday.', createdAt: day(0), updatedAt: day(0) },
-    { id: 'order-1042', storeId: 'store-bgc', customerName: 'Elijah Cruz', orderType: 'made_to_order', status: 'in_progress', reference: 'V-1042', notes: 'Custom fitting on Friday.', createdAt: day(-6), updatedAt: day(-2) },
-    { id: 'order-1043', storeId: 'store-quezon', customerName: 'Kyla Ramos', orderType: 'ready_made', status: 'ready', reference: 'V-1043', notes: 'Gift wrapped and ready.', createdAt: day(-2), updatedAt: day(-1) },
-    { id: 'order-1044', storeId: 'store-cebu', customerName: 'Noah Reyes', orderType: 'ready_made', status: 'pending', reference: 'V-1044', notes: 'Waiting for final size confirmation.', createdAt: day(-10), updatedAt: day(-10) },
-    { id: 'order-1045', storeId: 'store-davao', customerName: 'Mira Dela Cruz', orderType: 'made_to_order', status: 'released', reference: 'V-1045', notes: 'Delivered to home address.', createdAt: day(-20), updatedAt: day(-18) },
-  ]
-
-  const orderLines: OrderLineItem[] = [
-    { id: 'line-1', orderId: 'order-1041', variantId: 'var-luna-ivory-m', description: 'Luna Blouse Ivory M', quantity: 1, agreedPriceCents: 220000, unitId: 'unit-002' },
-    { id: 'line-2', orderId: 'order-1042', variantId: 'var-helio-midnight-8', description: 'Helio Dress Midnight 8', quantity: 1, agreedPriceCents: 395000, unitId: null },
-    { id: 'line-3', orderId: 'order-1042', variantId: null, description: 'Custom lining and hem adjustment', quantity: 1, agreedPriceCents: 120000, unitId: null },
-    { id: 'line-4', orderId: 'order-1043', variantId: 'var-mila-sand-tote', description: 'Mila Clutch Sand One Size', quantity: 1, agreedPriceCents: 180000, unitId: 'unit-010' },
-    { id: 'line-5', orderId: 'order-1044', variantId: 'var-avery-rose-s', description: 'Avery Wrap Top Rose S', quantity: 1, agreedPriceCents: 245000, unitId: null },
-    { id: 'line-6', orderId: 'order-1045', variantId: 'var-vienna-ivory-8', description: 'Vienna Bridal Set Ivory 8', quantity: 1, agreedPriceCents: 580000, unitId: 'unit-008' },
-  ]
-
-  const payments: PaymentRecord[] = [
-    { id: 'pay-1', orderId: 'order-1041', amountCents: 220000, method: 'cash', kind: 'payment', receivedAt: day(-1), receivedBy: 'Mia' },
-    { id: 'pay-2', orderId: 'order-1042', amountCents: 180000, method: 'gcash', kind: 'payment', receivedAt: day(-2), receivedBy: 'Joan' },
-    { id: 'pay-3', orderId: 'order-1043', amountCents: 180000, method: 'gcash', kind: 'payment', receivedAt: day(-1), receivedBy: 'Pia' },
-    { id: 'pay-4', orderId: 'order-1045', amountCents: 580000, method: 'bank', kind: 'payment', receivedAt: day(-18), receivedBy: 'Nina' },
-  ]
-
+export function emptyAdminState(): AdminState {
   return {
-    stores,
-    categories,
-    products,
-    productVariants,
-    inventoryUnits,
-    stockMovements,
-    staff,
-    storeAccess,
-    orders,
-    orderLines,
-    payments,
+    stores: [],
+    categories: [],
+    products: [],
+    productVariants: [],
+    inventoryUnits: [],
+    stockMovements: [],
+    staff: [],
+    storeAccess: [],
+    orders: [],
+    orderLines: [],
+    payments: [],
     salesExceptions: [],
   }
 }
 
 export function loadAdminState(): AdminState {
   if (typeof window === 'undefined') {
-    return createSeedState()
+    return emptyAdminState()
   }
 
   try {
     const raw = window.localStorage.getItem(ADMIN_STORAGE_KEY)
     if (!raw) {
-      return createSeedState()
+      return emptyAdminState()
     }
 
     const parsed = JSON.parse(raw) as AdminState
     if (!parsed || !Array.isArray(parsed.stores)) {
-      return createSeedState()
+      return emptyAdminState()
     }
 
     const validStatuses = new Set<UnitStatus>(['in_stock', 'sold', 'in_transit'])
@@ -351,8 +241,8 @@ export function loadAdminState(): AdminState {
         status: validStatuses.has(unit.status) ? unit.status : 'in_stock',
       })),
       payments: (parsed.payments ?? []).map((payment) => {
-        const legacyPayment = payment as Omit<PaymentRecord, 'method'> & { method: PaymentMethod | 'card'; kind?: PaymentKind }
-        const method: PaymentMethod = legacyPayment.method === 'card' ? 'bank' : legacyPayment.method
+        const legacyPayment = payment as Omit<PaymentRecord, 'method'> & { method: PaymentMethod | 'bank' | 'card'; kind?: PaymentKind }
+        const method: PaymentMethod = legacyPayment.method === 'bank' || legacyPayment.method === 'card' ? 'bank_transfer' : legacyPayment.method
         return {
           ...legacyPayment,
           method,
@@ -374,6 +264,6 @@ export function loadAdminState(): AdminState {
       salesExceptions: parsed.salesExceptions ?? [],
     }
   } catch {
-    return createSeedState()
+    return emptyAdminState()
   }
 }

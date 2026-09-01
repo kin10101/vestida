@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, Outlet, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, HelpCircle, Phone, X } from 'lucide-react'
+import { ArrowLeft, HelpCircle, LogOut, Phone, X } from 'lucide-react'
 import { HeaderTitleProvider } from './headerTitleProvider'
 import { useHeaderTitle } from './headerTitle'
+import { useAuth } from '../auth/AuthContext'
 
 // Owner's direct line — TODO: replace with Gina's real number.
 const OWNER_PHONE = '+639170000000'
@@ -111,6 +112,7 @@ function HelpModal({ open, onClose }: { open: boolean; onClose: () => void }) {
 function Header() {
   const location = useLocation()
   const { title, subtitle } = useHeaderTitle()
+  const { signOut } = useAuth()
   const [helpOpen, setHelpOpen] = useState(false)
   const isHome = location.pathname === '/staff'
 
@@ -137,18 +139,27 @@ function Header() {
           </div>
         )}
 
-        {isHome ? (
+        <div className="staff-header-actions">
+          {isHome && (
+            <button
+              type="button"
+              className="settings-button"
+              aria-label="Help"
+              onClick={() => setHelpOpen(true)}
+            >
+              <HelpCircle size={22} />
+            </button>
+          )}
           <button
             type="button"
             className="settings-button"
-            aria-label="Help"
-            onClick={() => setHelpOpen(true)}
+            aria-label="Log out"
+            title="Log out"
+            onClick={() => void signOut()}
           >
-            <HelpCircle size={22} />
+            <LogOut size={20} />
           </button>
-        ) : (
-          <span className="header-spacer" />
-        )}
+        </div>
       </header>
 
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />

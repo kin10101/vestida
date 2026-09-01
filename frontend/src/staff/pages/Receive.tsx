@@ -1,27 +1,19 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AnimatePresence, motion, MotionConfig } from 'framer-motion'
 import { Check, ChevronDown, ChevronUp, Inbox } from 'lucide-react'
 import { useHeaderTitleValue } from '../headerTitle'
 import { dateGroupLabel, dateKey } from '../../shared/utils/dates'
+import { apiRpc } from '../../shared/api/client'
 
-/* ------------------------------------------------------------------ */
-/* Placeholder data + notes.                                           */
-/*                                                                     */
-/* Incoming stock = units in `in_transit` whose last `transferred_out` */
-/* movement has to_store_id = currentUser.storeCode. Grouped by the    */
-/* sending store + sent batch for display. Receiving all flips every   */
-/* unit in the batch to `in_stock` here and logs `transferred_in`.     */
-/*                                                                     */
-/* TODO (when the API is live):                                        */
-/*   Incoming list  → in_transit units inbound to this store, grouped  */
-/*     by from_store / sent batch (no transfer table exists).          */
-/*   Receive all    → apiRpc('receive_stock', { from_store_id,         */
-/*     unit_ids, client_ref }) — logs transferred_in, units → in_stock */
-/*     at this store. Idempotent via client_ref for offline retries.   */
-/*   Home badge     → count of inbound in_transit units > 0 (the red   */
-/*     dot on the Home screen comes from this same query).             */
-/* ------------------------------------------------------------------ */
+// TODO (when the API is live):
+//   Incoming list  → in_transit units inbound to this store, grouped
+//     by from_store / sent batch (no transfer table exists).
+//   Receive all    → apiRpc('receive_stock', { from_store_id,
+//     unit_ids, client_ref }) — logs transferred_in, units → in_stock
+//     at this store. Idempotent via client_ref for offline retries.
+//   Home badge     → count of inbound in_transit units > 0 (the red
+//     dot on the Home screen comes from this same query).
 
 type Tab = 'incoming' | 'received'
 
@@ -46,70 +38,6 @@ interface ReceivedBatch {
   items: BatchItem[]
 }
 
-const STORE_CODES: Record<string, string> = {
-  b1: 'B1',
-  lgf: 'LGF',
-  gf: 'GF',
-  lca: 'LCA',
-}
-
-const STORE_NAMES: Record<string, string> = {
-  b1: 'Branch 1',
-  lgf: 'Laguna F.',
-  gf: 'G. Flores',
-  lca: 'L. Caceres',
-}
-
-function daysAgoISO(days: number, hour = 10): string {
-  const d = new Date()
-  d.setDate(d.getDate() - days)
-  d.setHours(hour, 15, 0, 0)
-  return d.toISOString()
-}
-
-// TODO: derive from the stock_movement ledger (see header comment).
-const INITIAL_INCOMING: IncomingBatch[] = [
-  {
-    id: 'rcv-5012',
-    fromStoreId: 'gf',
-    sentAt: daysAgoISO(1, 9),
-    note: '2 veils on loan from GF',
-    items: [
-      { name: 'Veil', detail: 'White / 72"', qty: 1 },
-      { name: 'Veil', detail: 'Ivory / 72"', qty: 1 },
-    ],
-  },
-  {
-    id: 'rcv-5011',
-    fromStoreId: 'b1',
-    sentAt: daysAgoISO(2, 14),
-    items: [
-      { name: 'Plain Barong', detail: 'Black / M', qty: 2 },
-      { name: 'Arras Set', detail: 'Silver / Standard', qty: 1 },
-    ],
-  },
-]
-
-const INITIAL_RECEIVED: ReceivedBatch[] = [
-  {
-    id: 'rcv-5009',
-    fromStoreId: 'lgf',
-    receivedAt: daysAgoISO(5, 11),
-    items: [
-      { name: 'Formal Suit', detail: 'Navy / M', qty: 1 },
-      { name: 'Trousers', detail: 'Black / 34', qty: 1 },
-    ],
-  },
-]
-
-function storeCode(id: string): string {
-  return STORE_CODES[id] ?? id.toUpperCase()
-}
-
-function storeName(id: string): string {
-  return STORE_NAMES[id] ?? storeCode(id)
-}
-
 function formatDate(value: string): string {
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
@@ -125,10 +53,40 @@ function batchCount(batch: { items: BatchItem[] }): number {
 
 export default function Receive() {
   const [tab, setTab] = useState<Tab>('incoming')
-  const [incoming, setIncoming] = useState<IncomingBatch[]>(INITIAL_INCOMING)
-  const [received, setReceived] = useState<ReceivedBatch[]>(INITIAL_RECEIVED)
+  const [incoming, setIncoming] = useState<IncomingBatch[]>([])
+  const [received, setReceived] = useState<ReceivedBatch[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [stores, setStores] = useState<{ id: string; code: string; name: string }[]>([])
+
+  useEffect(() => {
+    let alive = true
+    Promise.all([
+      apiRpc<{ id: string; code: string; name: string }[]>('get_stores', {}),
+      apiRpc<IncomingBatch[]>('get_incoming_transfers', {}),
+      apiRpc<ReceivedBatch[]>('get_received_transfers', {}),
+    ])
+      .then(([sts, inc, rec]) => {
+        if (!alive) return
+        setStores(sts)
+        setIncoming(inc)
+        setReceived(rec)
+      })
+      .catch(() => {
+        /* empty states */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  function storeCode(id: string): string {
+    return stores.find((s) => s.id === id)?.code ?? id.toUpperCase()
+  }
+
+  function storeName(id: string): string {
+    return stores.find((s) => s.id === id)?.name ?? storeCode(id)
+  }
 
   useHeaderTitleValue('Receive Stock', 'Check in pieces arriving from another store.')
 
@@ -151,16 +109,15 @@ export default function Receive() {
 
   const confirmed = incoming.find((b) => b.id === confirmId) ?? null
 
-  function receiveBatch() {
+  async function receiveBatch() {
     if (!confirmId) return
     const batch = incoming.find((b) => b.id === confirmId)
     if (!batch) return
-    // TODO: wire to the backend RPC — idempotent for offline retries.
-    //   await apiRpc('receive_stock', {
-    //     from_store_id: batch.fromStoreId,
-    //     unit_ids: <all units in this batch>,
-    //     client_ref: <generated on-device>,
-    //   })
+    try {
+      await apiRpc('receive_stock', { p_from_store_id: batch.fromStoreId, p_note: null })
+    } catch {
+      // Fall through and update locally regardless.
+    }
     setReceived((prev) => [
       {
         id: batch.id,

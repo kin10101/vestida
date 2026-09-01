@@ -3,31 +3,6 @@
 // 5 stores, sale-only (no rentals), unit-level physical tracking
 // Target: PostgreSQL on Supabase (free tier)
 // ============================================================
-// Design notes:
-//
-// 1. "FR.LGF / FR.GF / FR.LCA" on the sample sheet = branch codes.
-//    An item can be pulled from another store to complete a sale,
-//    modeled as a stock_movement (transferred_out / transferred_in).
-//    Permanent, since there are no rentals/returns.
-//
-// 2. Order status workflow — "ORD, 2ND VEIL, C.LEG, W.BOX, HANDO"
-//    on the sample sheet suggests a prep/checklist before handover.
-//    Modeled as a simple order_status enum (pending -> in_progress
-//    -> ready -> released). May need to be more granular.
-//
-// 2. Whether the 5 stores are peers, or one main branch + 4
-//    satellites (affects reporting/rollups later, not the schema
-//    itself for now).
-//
-// - No customer table. A plain customer_name text field lives
-//   directly on sales_order instead (matches what's actually on
-//   the paper log — a name, nothing structured).
-// - Authentication accounts are store-based and live outside this schema.
-//   staff is retained only for operational "care of" tracking.
-// - daily_expense removed for now (nothing else references it, so
-//   it's a trivial bolt-on later if the cash-reconciliation "Less"
-//   section turns out to matter enough to model).
-// ============================================================
 
 Enum unit_status {
   in_stock
@@ -62,12 +37,19 @@ Enum payment_method {
   bank_transfer
 }
 
+Enum payment_kind {
+  payment
+  refund
+  void_reversal
+}
+
 Table store {
   id uuid [pk, default: `gen_random_uuid()`]
   name varchar [not null]
   code varchar [unique, not null, note: 'e.g. B1, LGF, GF, LCA']
   is_active boolean [default: true]
   created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
 }
 
 Table staff {
@@ -76,6 +58,7 @@ Table staff {
   store_id uuid [ref: > store.id, note: 'primary store this person is based at, optional']
   is_active boolean [default: true]
   created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
 
   Note: 'Operational lookup only — used to track who handled sales, payments, and stock movements. Authentication is store-based and separate.'
 }
@@ -84,6 +67,7 @@ Table category {
   id uuid [pk, default: `gen_random_uuid()`]
   name varchar [not null, unique, note: 'Barong, Gown, Suit, Pants, Accessories...']
   created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
 }
 
 Table product {
@@ -93,6 +77,7 @@ Table product {
   description text
   is_active boolean [default: true]
   created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
 }
 
 Table product_variant {
@@ -103,6 +88,7 @@ Table product_variant {
   sku varchar [unique]
   regular_price integer [not null, note: 'centavos; reference/listed price only, never overwritten by a sale']
   created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
 
   indexes {
     (product_id, color, size) [unique]
@@ -117,6 +103,7 @@ Table inventory_unit {
   current_store_id uuid [ref: > store.id, not null]
   status unit_status [not null, default: 'in_stock']
   created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
 
   indexes {
     (current_store_id, status)
@@ -135,6 +122,7 @@ Table sales_order {
   order_date date [not null, default: `now()`]
   notes text
   created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
 }
 
 Table order_line_item {
@@ -142,10 +130,11 @@ Table order_line_item {
   order_id uuid [ref: > sales_order.id, not null]
   product_variant_id uuid [ref: > product_variant.id, note: 'null if fully bespoke, no catalog match yet']
   unit_id uuid [ref: > inventory_unit.id, note: 'null until a physical piece is assigned — immediate for ready-made, later for MTO']
-  quantity integer [not null, default: 1]
-  agreed_price integer [not null, note: 'centavos; ACTUAL bargained price — independent of regular_price and cost_price']
+  quantity integer [not null, default: 1, note: 'must be 1 whenever unit_id is set — one row per physical unit sold. Only >1 for bulk/untracked items with no unit_id. Not enforced by DBML; add a CHECK constraint (unit_id IS NULL OR quantity = 1) in migration SQL']
+  agreed_price integer [not null, note: 'centavos; ACTUAL bargained price per unit — independent of regular_price and cost_price']
   spec_note text [note: 'free-text: fabric, measurements, style detail — esp. for MTO']
   created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
 
   indexes {
     order_id
@@ -155,11 +144,28 @@ Table order_line_item {
 Table payment {
   id uuid [pk, default: `gen_random_uuid()`]
   order_id uuid [ref: > sales_order.id, not null]
-  amount integer [not null, note: 'centavos; positive for payment received']
+  amount integer [not null, note: 'centavos; positive for payments received, negative for refunds and void reversals']
   method payment_method [not null, default: 'cash']
+  kind payment_kind [not null, default: 'payment']
+  sales_exception_id uuid [ref: > sales_exception.id, note: 'links a refund or void reversal to its audit record']
   paid_at timestamp [default: `now()`]
   received_by uuid [ref: > staff.id, note: 'informational only, not enforced']
-  notes varchar [note: 'e.g. "downpayment", "balance"']
+  notes varchar [note: 'e.g. "downpayment", "balance", or refund/void reason']
+
+  indexes {
+    order_id
+  }
+}
+
+Table sales_exception {
+  id uuid [pk, default: `gen_random_uuid()`]
+  order_id uuid [ref: > sales_order.id, not null]
+  exception_type varchar [not null, note: 'void | refund']
+  reason text [not null]
+  amount integer [not null, note: 'centavos; amount reversed or refunded']
+  payment_method payment_method [note: 'required for refunds; null for voids that reverse original payments']
+  processed_by uuid [ref: > staff.id, note: 'informational only, not enforced']
+  created_at timestamp [default: `now()`]
 
   indexes {
     order_id
@@ -172,14 +178,15 @@ Table stock_movement {
   movement_type movement_type [not null]
   from_store_id uuid [ref: > store.id]
   to_store_id uuid [ref: > store.id]
-  reference_type varchar [note: '"order" | "manual" | "physical_count"']
-  reference_id uuid [note: 'e.g. sales_order.id when movement_type = sold']
+  reference_type varchar [note: '"order" | "manual" | "physical_count" | "transfer"']
+  reference_id uuid [note: 'sales_order.id for sales, or one shared operation UUID for a transfer']
   performed_by uuid [ref: > staff.id, note: 'informational only, not enforced']
   note text
   created_at timestamp [default: `now()`]
 
   indexes {
     unit_id
+    reference_id
     (movement_type, created_at)
   }
 }

@@ -1,4 +1,4 @@
-export type UnitStatus = 'in_stock' | 'reserved' | 'sold' | 'damaged' | 'returned' | 'in_transit'
+export type UnitStatus = 'in_stock' | 'sold' | 'in_transit'
 
 /** Top-level grouping, e.g. Barong, Suit, Pants. */
 export interface Category {
@@ -29,7 +29,6 @@ export interface InventoryUnit {
   variant_id: string
   unit_code: string | null
   cost_price: number
-  source_note: string | null
   current_store_id: string
   status: UnitStatus
 }

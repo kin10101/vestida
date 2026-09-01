@@ -1,18 +1,9 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowRight, ArrowUpRight, Inbox, List, Plus, Shirt } from 'lucide-react'
 import { formatPesoWhole } from '../../shared/utils/currency'
-
-// Placeholder numbers — will come from the API later.
-const today = {
-  totalSales: 6000,
-  cash: 4800,
-  gcash: 1200,
-}
-
-// True when at least one piece is inbound (in_transit → this store).
-// TODO: derive from the same query the Receive page uses — count of
-// in_transit units whose transferred_out has to_store_id = my store.
-const hasIncomingStock = true
+import { apiRpc } from '../../shared/api/client'
+import { useAuth } from '../../auth/AuthContext'
 
 const actions = [
   { to: '/staff/transfers', label: 'Transfer Stock', icon: ArrowUpRight },
@@ -21,11 +12,48 @@ const actions = [
   { to: '/staff/history', label: 'Sales History', icon: List },
 ]
 
+interface TodaySummary {
+  totalSales: number
+  cash: number
+  gcash: number
+  incoming: number
+}
+
 export default function Home() {
+  const { user } = useAuth()
+  const storeCode = user?.storeCode ?? ''
+  const [storeName, setStoreName] = useState(storeCode)
+  const [today, setToday] = useState<TodaySummary>({ totalSales: 0, cash: 0, gcash: 0, incoming: 0 })
+
+  useEffect(() => {
+    let alive = true
+    apiRpc<TodaySummary>('get_today_summary', {})
+      .then((s) => {
+        if (alive) setToday(s)
+      })
+      .catch(() => {
+        /* keep zeros */
+      })
+    apiRpc<{ id: string; code: string; name: string }[]>('get_stores', {})
+      .then((stores) => {
+        if (!alive) return
+        const mine = stores.find((s) => s.code === storeCode)
+        if (mine) setStoreName(mine.name)
+      })
+      .catch(() => {
+        /* keep code */
+      })
+    return () => {
+      alive = false
+    }
+  }, [storeCode])
+
+  const hasIncomingStock = today.incoming > 0
+
   return (
     <div className="staff-page">
-      <p className="store-eyebrow">LGA</p>
-      <h1 className="store-title">LGA Bridal Boutique</h1>
+      <p className="store-eyebrow">{storeCode}</p>
+      <h1 className="store-title">{storeName}</h1>
 
       <section className="sales-card">
         <h2 className="card-sub">Total Sales Today</h2>

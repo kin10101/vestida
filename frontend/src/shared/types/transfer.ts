@@ -4,7 +4,6 @@ export type MovementType =
   | 'transferred_in'
   | 'sold'
   | 'adjustment'
-  | 'returned'
 
 export type MovementReferenceType = 'order' | 'manual' | 'physical_count'
 

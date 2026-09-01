@@ -1,6 +1,8 @@
 import { Navigate } from 'react-router-dom'
 import type { ReactNode } from 'react'
-import { currentUser, type Role } from './currentUser'
+import { useAuth } from './AuthContext'
+import type { Role } from './currentUser'
+import LoadingSpinner from '../shared/components/LoadingSpinner'
 
 interface RequireRoleProps {
   role: Role
@@ -8,7 +10,14 @@ interface RequireRoleProps {
 }
 
 export default function RequireRole({ role, children }: RequireRoleProps) {
-  if (currentUser?.role !== role) {
+  const { user, loading } = useAuth()
+
+  // Resolve the session before deciding, so we never flash a redirect.
+  if (loading) {
+    return <LoadingSpinner />
+  }
+
+  if (user?.role !== role) {
     return <Navigate to="/login" replace />
   }
 

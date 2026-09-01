@@ -47,12 +47,14 @@ const formatPeso = (value: number) =>
     maximumFractionDigits: 0,
   }).format(value / 100)
 
+// A variant at or below this many in-stock units is flagged as low.
+const LOW_STOCK_THRESHOLD = 3
+
 export default function Products() {
   const { state, upsertCategory, deleteCategory, upsertProduct, upsertVariant, toggleProductActive, bulkToggleProductActive, toggleVariantActive } = useAdminData()
   const [search, setSearch] = useState('')
   const [selectedProductId, setSelectedProductId] = useState<string | null>(state.products[0]?.id ?? null)
   const [bulkMode, setBulkMode] = useState(false)
-  const [bulkMenuOpen, setBulkMenuOpen] = useState(false)
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
   const [productModalOpen, setProductModalOpen] = useState(false)
   const [variantModalOpen, setVariantModalOpen] = useState(false)
@@ -99,6 +101,23 @@ export default function Products() {
         : [],
     [selectedProduct, state.productVariants],
   )
+
+  const variantStock = useMemo(
+    () =>
+      selectedVariants.map((variant) => {
+        const units = state.inventoryUnits.filter((unit) => unit.variantId === variant.id)
+        const inStock = units.filter((unit) => unit.status === 'in_stock').length
+        return { variant, inStock }
+      }),
+    [selectedVariants, state.inventoryUnits],
+  )
+
+  const stockTotals = useMemo(() => {
+    const totalInStock = variantStock.reduce((sum, item) => sum + item.inStock, 0)
+    const lowCount = variantStock.filter((item) => item.variant.isActive && item.inStock > 0 && item.inStock <= LOW_STOCK_THRESHOLD).length
+    const outCount = variantStock.filter((item) => item.variant.isActive && item.inStock === 0).length
+    return { totalInStock, lowCount, outCount }
+  }, [variantStock])
 
   const openProductModal = (product?: Product) => {
     if (product) {
@@ -235,7 +254,6 @@ export default function Products() {
 
   const clearBulkSelection = () => {
     setBulkMode(false)
-    setBulkMenuOpen(false)
     setSelectedProductIds([])
   }
 
@@ -273,19 +291,9 @@ export default function Products() {
             </button>
             <div className="bulk-toolbar">
               {!bulkMode ? (
-                <>
-                  <button type="button" className="secondary-button bulk-mode-toggle desktop-only" onClick={() => setBulkMode(true)} aria-label="Select products for bulk activation or deactivation">
-                    Select
-                  </button>
-                  <button type="button" className="secondary-button bulk-mode-toggle mobile-only" onClick={() => setBulkMenuOpen((previous) => !previous)} aria-label="Toggle bulk product actions">
-                    {bulkMenuOpen ? 'Close' : 'Bulk'}
-                  </button>
-                  {bulkMenuOpen ? (
-                    <button type="button" className="secondary-button bulk-mode-toggle mobile-menu" onClick={() => { setBulkMenuOpen(false); setBulkMode(true) }} aria-label="Select products for bulk activation or deactivation">
-                      Select
-                    </button>
-                  ) : null}
-                </>
+                <button type="button" className="secondary-button bulk-mode-toggle" onClick={() => setBulkMode(true)} aria-label="Select products for bulk activation or deactivation">
+                  Select
+                </button>
               ) : (
                 <button type="button" className="secondary-button bulk-mode-toggle" onClick={clearBulkSelection} aria-label="Done bulk product selection">
                   Done
@@ -403,7 +411,7 @@ export default function Products() {
 
           <div className="detail-section">
             <h4>Catalog information</h4>
-            <div className="detail-meta-grid">
+            <div className="detail-meta-strip">
               <div>
                 <span>Category</span>
                 <strong>{state.categories.find((category) => category.id === selectedProduct.categoryId)?.name ?? 'Unassigned'}</strong>
@@ -417,8 +425,12 @@ export default function Products() {
                 <strong>{selectedVariants.length}</strong>
               </div>
               <div>
-                <span>Stock units</span>
-                <strong>{state.inventoryUnits.filter((unit) => selectedVariants.some((variant) => variant.id === unit.variantId)).length}</strong>
+                <span>In stock</span>
+                <div className="detail-stock-value">
+                  <strong>{stockTotals.totalInStock}</strong>
+                  {stockTotals.lowCount > 0 ? <span className="stock-flag low">{stockTotals.lowCount} low</span> : null}
+                  {stockTotals.outCount > 0 ? <span className="stock-flag out">{stockTotals.outCount} out</span> : null}
+                </div>
               </div>
             </div>
           </div>
@@ -435,33 +447,34 @@ export default function Products() {
               </button>
             </div>
 
-          <div className="record-stack compact">
+          <div className="variant-table">
+            <div className="variant-table-head" role="row">
+              <span role="columnheader">Variant</span>
+              <span role="columnheader">Price</span>
+              <span role="columnheader">Stock</span>
+              <span role="columnheader">Status</span>
+              <span role="columnheader" className="variant-table-actions">Actions</span>
+            </div>
             {selectedVariants.length > 0 ? (
-              selectedVariants.map((variant) => {
-                const liveUnits = state.inventoryUnits.filter((unit) => unit.variantId === variant.id)
-                const inStockCount = liveUnits.filter((unit) => unit.status === 'in_stock').length
-
+              variantStock.map(({ variant, inStock }) => {
+                const stockTone = variant.isActive && inStock === 0 ? 'out' : variant.isActive && inStock <= LOW_STOCK_THRESHOLD ? 'low' : ''
                 return (
-                  <div key={variant.id} className="record-card variant-row">
-                    <div className="record-main">
-                      <strong>
-                        {variant.color} {variant.size}
-                      </strong>
+                  <div key={variant.id} className="variant-table-row" role="row">
+                    <span role="cell" className="variant-name">
+                      <strong>{variant.color} {variant.size}</strong>
                       <small>{variant.sku}</small>
-                    </div>
-                    <div className="record-side column">
-                      <span>{formatPeso(variant.regularPriceCents)}</span>
-                      <StatusBadge label={variant.isActive ? 'Active' : 'Inactive'} tone={variant.isActive ? 'success' : 'neutral'} />
-                    </div>
-                    <div className="record-actions">
-                      <span>{inStockCount} in stock</span>
-                      <button type="button" className="text-button" onClick={() => openVariantModal(variant)}>
-                        Edit
+                    </span>
+                    <span role="cell" className="variant-price">{formatPeso(variant.regularPriceCents)}</span>
+                    <span role="cell" className={`variant-stock ${stockTone}`}>{inStock}</span>
+                    <span role="cell" className="variant-status"><StatusBadge label={variant.isActive ? 'Active' : 'Inactive'} tone={variant.isActive ? 'success' : 'neutral'} /></span>
+                    <span role="cell" className="variant-table-actions">
+                      <button type="button" className="row-icon-button" onClick={() => openVariantModal(variant)} aria-label={`Edit ${variant.color} ${variant.size}`} title="Edit variant">
+                        <PencilLine size={16} />
                       </button>
-                      <button type="button" className="text-button" onClick={() => toggleVariantActive(variant.id)}>
-                        {variant.isActive ? 'Disable' : 'Enable'}
+                      <button type="button" className="row-icon-button" onClick={() => toggleVariantActive(variant.id)} aria-label={`${variant.isActive ? 'Disable' : 'Enable'} ${variant.color} ${variant.size}`} title={variant.isActive ? 'Disable variant' : 'Enable variant'}>
+                        {variant.isActive ? <ToggleLeft size={18} /> : <ToggleRight size={18} />}
                       </button>
-                    </div>
+                    </span>
                   </div>
                 )
               })

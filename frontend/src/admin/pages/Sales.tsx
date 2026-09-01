@@ -9,7 +9,6 @@ const periods = ['all', '7d', 'month'] as const
 
 type SalesTab = (typeof tabs)[number]
 type Period = (typeof periods)[number]
-type RefundItemDraft = { lineId: string; quantity: number; returnToStock: boolean }
 
 const formatPeso = (value: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 }).format(value / 100)
@@ -47,7 +46,6 @@ export default function Sales() {
   const [reason, setReason] = useState('')
   const [refundMethod, setRefundMethod] = useState<PaymentMethod>('cash')
   const [refundAmountCents, setRefundAmountCents] = useState(0)
-  const [refundItems, setRefundItems] = useState<RefundItemDraft[]>([])
 
   const selectedOrder = state.orders.find((order) => order.id === selectedOrderId) ?? null
   const selectedLines = useMemo(
@@ -80,7 +78,7 @@ export default function Sales() {
   )
 
   const paymentTotals = useMemo(() => {
-    const totals: Record<PaymentMethod, number> = { cash: 0, gcash: 0, bank: 0 }
+    const totals: Record<PaymentMethod, number> = { cash: 0, gcash: 0, bank_transfer: 0 }
     visiblePayments.forEach((payment) => { totals[payment.method] += payment.amountCents })
     return totals
   }, [visiblePayments])
@@ -118,12 +116,7 @@ export default function Sales() {
     setReason('')
     setRefundMethod('cash')
     setRefundAmountCents(Math.max(selectedPaid, 0))
-    setRefundItems(selectedLines.map((line) => ({ lineId: line.id, quantity: 0, returnToStock: false })))
     setRefundOpen(true)
-  }
-
-  const updateRefundItem = (lineId: string, patch: Partial<RefundItemDraft>) => {
-    setRefundItems((items) => items.map((item) => item.lineId === lineId ? { ...item, ...patch } : item))
   }
 
   const submitVoid = () => {
@@ -134,14 +127,13 @@ export default function Sales() {
   }
 
   const submitRefund = () => {
-    if (!selectedOrder || !reason.trim() || refundAmountCents <= 0 || !refundItems.some((item) => item.quantity > 0)) return
+    if (!selectedOrder || !reason.trim() || refundAmountCents <= 0) return
     refundSale({
       orderId: selectedOrder.id,
       reason,
       amountCents: refundAmountCents,
       method: refundMethod,
       processedBy: 'Admin',
-      items: refundItems.filter((item) => item.quantity > 0),
     })
     setRefundOpen(false)
     setReason('')
@@ -189,7 +181,7 @@ export default function Sales() {
 
       {tab === 'payments' ? <>
         <div className="metrics-grid three-up">
-          {Object.entries(paymentTotals).map(([method, amount]) => <MetricCard key={method} title={method === 'gcash' ? 'GCash' : method === 'bank' ? 'Bank transfer' : 'Cash'} value={formatPeso(amount)} helper="Net tender recorded" tone={method === 'cash' ? 'success' : method === 'gcash' ? 'info' : 'neutral'} />)}
+          {Object.entries(paymentTotals).map(([method, amount]) => <MetricCard key={method} title={method === 'gcash' ? 'GCash' : method === 'bank_transfer' ? 'Bank transfer' : 'Cash'} value={formatPeso(amount)} helper="Net tender recorded" tone={method === 'cash' ? 'success' : method === 'gcash' ? 'info' : 'neutral'} />)}
         </div>
         <section className="admin-panel compact-panel"><div className="panel-header-row"><h3>Payment ledger</h3><WalletCards size={18} /></div><div className="record-stack compact">
           {visiblePayments.length ? visiblePayments.map((payment) => { const order = state.orders.find((item) => item.id === payment.orderId); const isReversal = payment.amountCents < 0; return <div key={payment.id} className="record-card payment-row"><div className="record-main"><strong>{order?.reference ?? 'Unknown transaction'}</strong><small>{order?.customerName ?? 'Unknown customer'} · {formatDate(payment.receivedAt)}</small></div><StatusBadge label={payment.kind === 'payment' ? payment.method : payment.kind === 'refund' ? 'Refund' : 'Void reversal'} tone={isReversal ? 'danger' : 'success'} /><span>{payment.receivedBy}</span><strong className={isReversal ? 'amount-negative' : ''}>{formatPeso(payment.amountCents)}</strong></div> }) : <EmptyState title="No payments recorded" description="Staff checkout activity will appear here." />}
@@ -207,7 +199,7 @@ export default function Sales() {
 
       <Drawer open={voidOpen} size="sheet" title="Void sale" subtitle="This cancels the transaction, reverses its tender, and restores tracked stock." onClose={() => setVoidOpen(false)} footer={<div className="modal-footer-actions"><button type="button" className="secondary-button" onClick={() => setVoidOpen(false)}>Cancel</button><button type="button" className="primary-button danger-button" onClick={submitVoid} disabled={!reason.trim()}>Void sale</button></div>}><Field label="Reason" hint="This will be kept in the transaction audit history."><textarea value={reason} onChange={(event) => setReason(event.target.value)} className="admin-textarea" rows={4} /></Field></Drawer>
 
-      <Drawer open={refundOpen} size="panel" title="Refund sale" subtitle="Select returned items, then record the amount and method used for the refund." onClose={() => setRefundOpen(false)} footer={<div className="modal-footer-actions"><button type="button" className="secondary-button" onClick={() => setRefundOpen(false)}>Cancel</button><button type="button" className="primary-button" onClick={submitRefund} disabled={!reason.trim() || refundAmountCents <= 0 || !refundItems.some((item) => item.quantity > 0)}>Record refund</button></div>}><div className="form-grid"><div className="refund-items"><strong>Returned items</strong>{selectedLines.map((line) => { const draft = refundItems.find((item) => item.lineId === line.id); const isCompleteReturn = draft?.quantity === line.quantity; return <div key={line.id} className="refund-item"><div><strong>{line.description}</strong><small>{formatPeso(line.agreedPriceCents)} each · {line.quantity} sold</small></div><Field label="Quantity"><input type="number" min="0" max={line.quantity} value={draft?.quantity ?? 0} onChange={(event) => updateRefundItem(line.id, { quantity: Math.min(Math.max(Number(event.target.value) || 0, 0), line.quantity), returnToStock: false })} className="admin-input" /></Field>{line.unitId ? <label className="checkbox-field"><input type="checkbox" checked={Boolean(draft?.returnToStock)} disabled={!isCompleteReturn} onChange={(event) => updateRefundItem(line.id, { returnToStock: event.target.checked })} />Return tracked stock</label> : null}</div> })}</div><Field label="Refund amount"><input type="number" min="0" max={Math.max(selectedPaid, 0) / 100} value={refundAmountCents / 100} onChange={(event) => setRefundAmountCents(Math.round(Math.max(Number(event.target.value) || 0, 0) * 100))} className="admin-input" /></Field><Field label="Refund method"><select value={refundMethod} onChange={(event) => setRefundMethod(event.target.value as PaymentMethod)} className="admin-select"><option value="cash">Cash</option><option value="gcash">GCash</option><option value="bank">Bank transfer</option></select></Field><Field label="Reason" hint="This will be kept in the transaction audit history."><textarea value={reason} onChange={(event) => setReason(event.target.value)} className="admin-textarea" rows={3} /></Field></div></Drawer>
+      <Drawer open={refundOpen} size="sheet" title="Refund sale" subtitle="Record a monetary refund without changing stock." onClose={() => setRefundOpen(false)} footer={<div className="modal-footer-actions"><button type="button" className="secondary-button" onClick={() => setRefundOpen(false)}>Cancel</button><button type="button" className="primary-button" onClick={submitRefund} disabled={!reason.trim() || refundAmountCents <= 0}>Record refund</button></div>}><div className="form-grid"><Field label="Refund amount"><input type="number" min="0" max={Math.max(selectedPaid, 0) / 100} value={refundAmountCents / 100} onChange={(event) => setRefundAmountCents(Math.round(Math.max(Number(event.target.value) || 0, 0) * 100))} className="admin-input" /></Field><Field label="Refund method"><select value={refundMethod} onChange={(event) => setRefundMethod(event.target.value as PaymentMethod)} className="admin-select"><option value="cash">Cash</option><option value="gcash">GCash</option><option value="bank_transfer">Bank transfer</option></select></Field><Field label="Reason" hint="This will be kept in the transaction audit history."><textarea value={reason} onChange={(event) => setReason(event.target.value)} className="admin-textarea" rows={3} /></Field></div></Drawer>
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
-import { BarChart3, Boxes, LayoutDashboard, Store, Tags } from 'lucide-react'
+import { BarChart3, Boxes, LayoutDashboard, LogOut, Store, Tags } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
 
 const navItems = [
   { to: '/admin', label: 'Dashboard', shortLabel: 'Home', end: true, icon: LayoutDashboard },
@@ -11,6 +12,8 @@ const navItems = [
 ]
 
 export default function AdminLayout() {
+  const { signOut } = useAuth()
+
   return (
     <div className="admin-app">
       <aside className="admin-sidebar">
@@ -44,6 +47,17 @@ export default function AdminLayout() {
             </NavLink>
           ))}
         </nav>
+
+        <button
+          type="button"
+          className="admin-logout"
+          aria-label="Log out"
+          title="Log out"
+          onClick={() => void signOut()}
+        >
+          <LogOut aria-hidden="true" size={19} strokeWidth={1.8} />
+          <span className="admin-logout-label">Log out</span>
+        </button>
       </aside>
 
       <main className="admin-main">

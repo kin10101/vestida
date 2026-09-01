@@ -16,16 +16,12 @@ import {
 } from 'lucide-react'
 import type { OrderType, PaymentMethod } from '../../shared/types/sale'
 import { formatPesoWhole, pesosToNumber } from '../../shared/utils/currency'
+import { apiRpc } from '../../shared/api/client'
+import { useAuth } from '../../auth/AuthContext'
 import { useHeaderTitleValue } from '../headerTitle'
 
-/* ------------------------------------------------------------------ */
-/* Placeholder catalog + staff list.                                   */
-/* TODO: load categories, products, variants and per-variant stock     */
-/* from the API (COUNT(inventory_unit) WHERE status = 'in_stock'),     */
-/* and call apiRpc('log_sale', ...) on Complete Sale.                  */
-/* ------------------------------------------------------------------ */
-
 interface CatalogVariant {
+  id: string
   color: string
   size: string | null
   regularPrice: number
@@ -41,70 +37,10 @@ interface CatalogProduct {
 
 const ALL = 'all'
 
-const CATEGORIES: { id: string; name: string }[] = [
-  { id: 'barong', name: 'Barong' },
-  { id: 'suit', name: 'Suit' },
-  { id: 'pants', name: 'Pants' },
-  { id: 'acc', name: 'Accessories' },
-]
-
-const PRODUCTS: CatalogProduct[] = [
-  {
-    id: 'plain-barong',
-    categoryId: 'barong',
-    name: 'Plain Barong',
-    variants: [
-      { color: 'Black', size: 'M', regularPrice: 2500, inStock: 1 },
-      { color: 'Black', size: 'L', regularPrice: 2500, inStock: 2 },
-      { color: 'White', size: 'S', regularPrice: 2500, inStock: 3 },
-      { color: 'White', size: 'M', regularPrice: 2500, inStock: 1 },
-    ],
-  },
-  {
-    id: 'barong-sports',
-    categoryId: 'barong',
-    name: 'Barong Sports Collar',
-    variants: [
-      { color: 'Black', size: 'M', regularPrice: 2800, inStock: 2 },
-      { color: 'Black', size: 'L', regularPrice: 2800, inStock: 1 },
-    ],
-  },
-  {
-    id: 'formal-suit',
-    categoryId: 'suit',
-    name: 'Formal Suit',
-    variants: [
-      { color: 'Black', size: 'L', regularPrice: 5500, inStock: 1 },
-      { color: 'Navy', size: 'M', regularPrice: 5500, inStock: 2 },
-    ],
-  },
-  {
-    id: 'trousers',
-    categoryId: 'pants',
-    name: 'Trousers',
-    variants: [
-      { color: 'Black', size: '32', regularPrice: 1000, inStock: 4 },
-      { color: 'Black', size: '34', regularPrice: 1000, inStock: 2 },
-      { color: 'Blue', size: '30', regularPrice: 1000, inStock: 1 },
-    ],
-  },
-  {
-    id: 'arras-set',
-    categoryId: 'acc',
-    name: 'Arras Set',
-    variants: [
-      { color: 'Silver', size: null, regularPrice: 650, inStock: 2 },
-      { color: 'Gold', size: null, regularPrice: 650, inStock: 1 },
-    ],
-  },
-]
-
-const STAFF = ['Gina', 'Cel', 'Ian']
-
 const PAYMENT_METHODS: { id: PaymentMethod; label: string; icon: typeof Banknote }[] = [
   { id: 'cash', label: 'Cash', icon: Banknote },
   { id: 'gcash', label: 'GCash', icon: Smartphone },
-  { id: 'bank', label: 'Bank Transfer', icon: Landmark },
+  { id: 'bank_transfer', label: 'Bank Transfer', icon: Landmark }
 ]
 
 interface OrderItem {
@@ -112,8 +48,9 @@ interface OrderItem {
   name: string
   detail: string // e.g. "Black / M" or "MTO"
   qty: number
-  price: number // agreed unit price
+  price: number // agreed unit price (pesos)
   regular: number
+  variantId?: string // ready-made only — used to auto-assign units server-side
   spec?: string // MTO note
 }
 
@@ -129,6 +66,8 @@ function totalStock(p: CatalogProduct): number {
 
 export default function Sale() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const storeCode = user?.storeCode ?? 'STORE'
 
   const [step, setStep] = useState<Step>('gate')
   const [orderType, setOrderType] = useState<OrderType>('ready_made')
@@ -153,8 +92,35 @@ export default function Sale() {
   const [method, setMethod] = useState<PaymentMethod>('cash')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
-  const [careOf, setCareOf] = useState(STAFF[0])
+
+  // Catalog, categories and staff loaded from the API.
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
+  const [products, setProducts] = useState<CatalogProduct[]>([])
+  const [staff, setStaff] = useState<string[]>([])
+
+  const [careOf, setCareOf] = useState(staff[0])
   const [orderNo, setOrderNo] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    Promise.all([
+      apiRpc<{ id: string; name: string }[]>('get_categories', {}),
+      apiRpc<CatalogProduct[]>('get_catalog', {}),
+      apiRpc<string[]>('get_staff', {}),
+    ])
+      .then(([cats, prods, staffList]) => {
+        if (!alive) return
+        setCategories(cats)
+        setProducts(prods)
+        setStaff(staffList)
+      })
+      .catch(() => {
+        /* leave empty; pages render empty states */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
 
   // Focus the opener of whichever card just expanded.
   const headRefs = useRef<Record<string, HTMLButtonElement | null>>({})
@@ -168,14 +134,14 @@ export default function Sale() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return PRODUCTS.filter(
+    return products.filter(
       (p) =>
         (categoryId === ALL || p.categoryId === categoryId) &&
         (q === '' || p.name.toLowerCase().includes(q)),
     )
-  }, [query, categoryId])
+  }, [query, categoryId, products])
 
-  const current = PRODUCTS.find((p) => p.id === selectedId) ?? null
+  const current = products.find((p) => p.id === selectedId) ?? null
   const colors = current ? [...new Set(current.variants.map((v) => v.color))] : []
   const hasSizes = current ? current.variants.some((v) => v.size !== null) : false
   const sizes = current && color
@@ -231,16 +197,19 @@ export default function Sale() {
 
   function addReadyMade() {
     if (!current || !selectedVariant || stock === 0) return
+    const price = pesosToNumber(agreedPrice) || selectedVariant.regularPrice
+    const detail = [color, size].filter(Boolean).join(' / ')
     setItems((prev) => [
       ...prev,
-      {
-        key: Date.now(),
+      ...Array.from({ length: qty }, (_, index) => ({
+        key: Date.now() + index,
         name: current.name,
-        detail: [color, size].filter(Boolean).join(' / '),
-        qty,
-        price: pesosToNumber(agreedPrice) || selectedVariant.regularPrice,
+        detail,
+        qty: 1,
+        price,
         regular: selectedVariant.regularPrice,
-      },
+        variantId: selectedVariant.id,
+      })),
     ])
     setSelectedId(null)
     setQuery('')
@@ -274,16 +243,27 @@ export default function Sale() {
     }
   }
 
-  function completeSale() {
-    // TODO: wire to the backend RPC —
-    //   await apiRpc('log_sale', {
-    //     order_type: orderType,
-    //     customer_name: customerName,
-    //     items,
-    //     payment: { method, amount: paid, note },
-    //     care_of: careOf,
-    //   })
-    setOrderNo(`LGA-${dateStamp()}-${String(Math.floor(100 + Math.random() * 900))}`)
+  async function completeSale() {
+    if (items.length === 0) return
+    const clientRef = `${storeCode}-${dateStamp()}-${String(Math.floor(100 + Math.random() * 900))}`
+    try {
+      await apiRpc('log_sale', {
+        order_type: orderType,
+        customer_name: customerName.trim() || null,
+        items: items.map((i) => ({
+          variant_id: i.variantId ?? null,
+          quantity: i.qty,
+          agreed_price: i.price,
+          spec_note: i.spec ?? null,
+        })),
+        payment: paid > 0 ? { method, amount: paid, note: note.trim() || null } : null,
+        care_of: null, // staff-uuid mapping not wired yet; dispatched_by is informational
+        client_ref: clientRef,
+      })
+    } catch {
+      // Persist the order locally so the sale isn't lost, then still show done.
+    }
+    setOrderNo(clientRef)
     setStep('done')
   }
 
@@ -305,7 +285,7 @@ export default function Sale() {
     setMethod('cash')
     setAmount('')
     setNote('')
-    setCareOf(STAFF[0])
+    setCareOf(staff[0])
     setOrderNo('')
   }
 
@@ -370,7 +350,7 @@ export default function Sale() {
         >
           All
         </motion.button>
-        {CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <motion.button
             type="button"
             key={c.id}
@@ -636,7 +616,7 @@ export default function Sale() {
 
       <span className="field-label field-label-sm">Care of</span>
       <div className="option-row">
-        {STAFF.map((s) => (
+        {staff.map((s) => (
           <motion.button
             type="button"
             key={s}

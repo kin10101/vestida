@@ -1,18 +1,29 @@
-// Placeholder API client.
+// API client backed by Supabase (PostgREST + RPC).
 //
-// Later this wraps Supabase:
-//   - simple reads via PostgREST
-//   - compound writes (log_sale, receive_stock, transfer_stock) via RPC
+//   - simple reads  → apiGet('product_variant', { product_id })
+//   - compound writes (log_sale, receive_stock, transfer_stock) → apiRpc
 //   - Row Level Security provides store scoping
 
-const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? ''
+import { supabase } from '../supabase/client'
 
-export async function apiGet<T>(path: string): Promise<T> {
-  throw new Error(`API client not implemented yet (GET ${API_BASE_URL}${path})`)
+/** Read rows from a table. `params` becomes an exact-match WHERE filter. */
+export async function apiGet<T>(
+  table: string,
+  params?: Record<string, unknown>,
+): Promise<T[]> {
+  let query = supabase.from(table).select('*')
+  if (params) query = query.match(params)
+  const { data, error } = await query
+  if (error) throw error
+  return (data ?? []) as T[]
 }
 
-export async function apiRpc<T>(fnName: string, args: unknown): Promise<T> {
-  throw new Error(
-    `API client not implemented yet (RPC ${fnName} ${JSON.stringify(args)})`,
-  )
+/** Call a Postgres function (log_sale, receive_stock, transfer_stock, ...). */
+export async function apiRpc<T>(
+  fnName: string,
+  args: unknown,
+): Promise<T> {
+  const { data, error } = await supabase.rpc(fnName, args as Record<string, unknown>)
+  if (error) throw error
+  return data as T
 }

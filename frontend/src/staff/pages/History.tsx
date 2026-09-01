@@ -1,12 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion, MotionConfig, useReducedMotion } from 'framer-motion'
 import { Banknote, ChevronDown, ChevronUp, Landmark, Search, Smartphone } from 'lucide-react'
 import { formatPesoWhole } from '../../shared/utils/currency'
+import { apiRpc } from '../../shared/api/client'
 import { useHeaderTitleValue } from '../headerTitle'
 
 type DayFilter = 'today' | 'yesterday'
-type StaffFilter = 'All' | 'Gina' | 'Cel' | 'Ian'
-type PaymentMethod = 'cash' | 'gcash' | 'bank'
+type StaffFilter = string
+type PaymentMethod = 'cash' | 'gcash' | 'bank_transfer'
 type OrderKind = 'ready_made' | 'made_to_order'
 
 interface HistoryItem {
@@ -30,11 +31,11 @@ interface HistoryOrder {
   items: HistoryItem[]
 }
 
-const STAFF_FILTERS: StaffFilter[] = ['All', 'Gina', 'Cel', 'Ian']
+// TODO: load the staff list from the API.
 const PAYMENT_META: Record<PaymentMethod, { label: string; icon: typeof Banknote }> = {
   cash: { label: 'Cash', icon: Banknote },
   gcash: { label: 'GCash', icon: Smartphone },
-  bank: { label: 'Bank Transfer', icon: Landmark },
+  bank_transfer: { label: 'Bank Transfer', icon: Landmark },
 }
 
 function getDateKey(offsetDays = 0) {
@@ -43,73 +44,6 @@ function getDateKey(offsetDays = 0) {
   date.setDate(date.getDate() + offsetDays)
   return date.toISOString().slice(0, 10)
 }
-
-const ORDERS: HistoryOrder[] = [
-  {
-    id: 'ord-1041',
-    dateKey: getDateKey(0),
-    createdAt: '2026-08-28T14:45:00',
-    customer: 'Elyssa Cruz',
-    total: 5600,
-    paid: 5600,
-    method: 'cash',
-    careOf: 'Gina',
-    type: 'made_to_order',
-    orderNumber: 'LGA-1041',
-    items: [
-      { name: 'Filipiniana Gown', detail: 'Ivory / Custom neckline', qty: 1, price: 3400 },
-      { name: 'Veil', detail: 'White / 72"', qty: 1, price: 2200 },
-    ],
-  },
-  {
-    id: 'ord-1040',
-    dateKey: getDateKey(0),
-    createdAt: '2026-08-28T12:10:00',
-    customer: null,
-    total: 4200,
-    paid: 3000,
-    method: 'gcash',
-    careOf: 'Cel',
-    type: 'ready_made',
-    orderNumber: 'LGA-1040',
-    items: [
-      { name: 'Plain Barong', detail: 'Black / M', qty: 1, price: 2500 },
-      { name: 'Arras Set', detail: 'Silver / Standard', qty: 1, price: 1700 },
-    ],
-  },
-  {
-    id: 'ord-1039',
-    dateKey: getDateKey(-1),
-    createdAt: '2026-08-27T16:20:00',
-    customer: 'Mia Santos',
-    total: 7850,
-    paid: 7850,
-    method: 'bank',
-    careOf: 'Ian',
-    type: 'ready_made',
-    orderNumber: 'LGA-1039',
-    items: [
-      { name: 'Formal Suit', detail: 'Navy / M', qty: 1, price: 5500 },
-      { name: 'Trousers', detail: 'Black / 32', qty: 1, price: 2350 },
-    ],
-  },
-  {
-    id: 'ord-1038',
-    dateKey: getDateKey(-1),
-    createdAt: '2026-08-27T09:35:00',
-    customer: 'Walk-in',
-    total: 1680,
-    paid: 1000,
-    method: 'cash',
-    careOf: 'Gina',
-    type: 'ready_made',
-    orderNumber: 'LGA-1038',
-    items: [
-      { name: 'Arras Set', detail: 'Gold / Standard', qty: 1, price: 650 },
-      { name: 'Trousers', detail: 'Blue / 30', qty: 1, price: 1030 },
-    ],
-  },
-]
 
 function formatTime(value: string) {
   return new Intl.DateTimeFormat('en-US', {
@@ -127,11 +61,33 @@ export default function History() {
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null)
   const reduceMotion = useReducedMotion()
 
+  const [orders, setOrders] = useState<HistoryOrder[]>([])
+  const [staffFilters, setStaffFilters] = useState<StaffFilter[]>(['All'])
+
+  useEffect(() => {
+    let alive = true
+    Promise.all([
+      apiRpc<HistoryOrder[]>('get_history', {}),
+      apiRpc<string[]>('get_staff', {}),
+    ])
+      .then(([history, staffList]) => {
+        if (!alive) return
+        setOrders(history)
+        setStaffFilters(['All', ...staffList])
+      })
+      .catch(() => {
+        /* empty states */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   const selectedDayKey = day === 'today' ? getDateKey(0) : getDateKey(-1)
 
   const dayOrders = useMemo(
-    () => ORDERS.filter((order) => order.dateKey === selectedDayKey),
-    [selectedDayKey],
+    () => orders.filter((order) => order.dateKey === selectedDayKey),
+    [orders, selectedDayKey],
   )
 
   const filteredOrders = useMemo(() => {
@@ -202,7 +158,7 @@ export default function History() {
       </label>
 
       <div className="chip-scroll history-staff-row" aria-label="Staff filter chips">
-        {STAFF_FILTERS.map((option) => (
+        {staffFilters.map((option) => (
           <motion.button
             key={option}
             type="button"

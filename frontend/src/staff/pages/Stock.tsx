@@ -2,20 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion, MotionConfig, useReducedMotion } from 'framer-motion'
 import { ChevronDown, ChevronUp, Search } from 'lucide-react'
 import LoadingSpinner from '../../shared/components/LoadingSpinner'
+import { apiRpc } from '../../shared/api/client'
 import { useHeaderTitleValue } from '../headerTitle'
 
 const ALL = 'all'
 
-const CATEGORIES: { id: string; name: string }[] = [
-  { id: 'barong', name: 'Barong' },
-  { id: 'suit', name: 'Suit' },
-  { id: 'pants', name: 'Pants' },
-  { id: 'acc', name: 'Accessories' },
-]
-
 interface StoreCounts {
   available: number
-  reserved: number
   inTransit: number
 }
 
@@ -33,171 +26,18 @@ interface StockProduct {
   variants: StockVariant[]
 }
 
-// The 5 stores. Stock can be viewed per store, or across all of them.
-const STORES: { code: string; name: string }[] = [
-  { code: 'LGA', name: 'LGA Bridal Boutique' },
-  { code: 'B1', name: 'Branch 1' },
-  { code: 'LGF', name: 'Laguna F.' },
-  { code: 'GF', name: 'G. Flores' },
-  { code: 'LCA', name: 'L. Caceres' },
-]
-
-// Placeholder stock report, split by store.
-//
-// TODO: replace with a real DB query, e.g.
-//   apiGet<StockProduct[]>(`/stock?store_id=...`)
-// returning COUNT(inventory_unit) per variant per store, split by status
-// (in_stock / reserved / in_transit).
-const STOCK: StockProduct[] = [
-  {
-    id: 'plain-barong',
-    categoryId: 'barong',
-    name: 'Plain Barong',
-    variants: [
-      {
-        color: 'Black',
-        size: 'M',
-        stores: { LGA: { available: 1, reserved: 0, inTransit: 0 }, B1: { available: 1, reserved: 0, inTransit: 0 } },
-      },
-      {
-        color: 'Black',
-        size: 'L',
-        stores: { LGA: { available: 2, reserved: 1, inTransit: 0 }, LGF: { available: 1, reserved: 0, inTransit: 0 } },
-      },
-      {
-        color: 'White',
-        size: 'S',
-        stores: { LGA: { available: 3, reserved: 0, inTransit: 0 }, B1: { available: 1, reserved: 0, inTransit: 1 }, GF: { available: 1, reserved: 0, inTransit: 0 } },
-      },
-      {
-        color: 'White',
-        size: 'M',
-        stores: { LGA: { available: 1, reserved: 0, inTransit: 0 }, LCA: { available: 1, reserved: 0, inTransit: 0 } },
-      },
-    ],
-  },
-  {
-    id: 'barong-sports',
-    categoryId: 'barong',
-    name: 'Barong Sports Collar',
-    variants: [
-      {
-        color: 'Black',
-        size: 'M',
-        stores: { LGA: { available: 2, reserved: 0, inTransit: 0 }, GF: { available: 1, reserved: 0, inTransit: 0 } },
-      },
-      {
-        color: 'Black',
-        size: 'L',
-        stores: { LGA: { available: 1, reserved: 0, inTransit: 1 }, LGF: { available: 1, reserved: 0, inTransit: 0 } },
-      },
-    ],
-  },
-  {
-    id: 'formal-suit',
-    categoryId: 'suit',
-    name: 'Formal Suit',
-    variants: [
-      {
-        color: 'Black',
-        size: 'L',
-        stores: { LGA: { available: 1, reserved: 0, inTransit: 0 }, B1: { available: 1, reserved: 0, inTransit: 0 } },
-      },
-      {
-        color: 'Navy',
-        size: 'M',
-        stores: { LGA: { available: 2, reserved: 1, inTransit: 0 }, LGF: { available: 1, reserved: 0, inTransit: 0 }, GF: { available: 1, reserved: 0, inTransit: 0 } },
-      },
-    ],
-  },
-  {
-    id: 'waistcoat',
-    categoryId: 'suit',
-    name: 'Waistcoat',
-    variants: [
-      {
-        color: 'Black',
-        size: 'M',
-        stores: { LGA: { available: 0, reserved: 0, inTransit: 2 }, LCA: { available: 1, reserved: 0, inTransit: 0 } },
-      },
-      {
-        color: 'White',
-        size: 'L',
-        stores: { LGA: { available: 2, reserved: 0, inTransit: 0 }, B1: { available: 1, reserved: 0, inTransit: 0 } },
-      },
-    ],
-  },
-  {
-    id: 'trousers',
-    categoryId: 'pants',
-    name: 'Trousers',
-    variants: [
-      {
-        color: 'Black',
-        size: '32',
-        stores: { LGA: { available: 4, reserved: 0, inTransit: 0 }, GF: { available: 2, reserved: 0, inTransit: 0 } },
-      },
-      {
-        color: 'Black',
-        size: '34',
-        stores: { LGA: { available: 2, reserved: 0, inTransit: 0 }, LGF: { available: 1, reserved: 0, inTransit: 0 }, B1: { available: 1, reserved: 0, inTransit: 0 } },
-      },
-      {
-        color: 'Blue',
-        size: '30',
-        stores: { LGA: { available: 1, reserved: 0, inTransit: 1 }, LCA: { available: 1, reserved: 0, inTransit: 0 } },
-      },
-    ],
-  },
-  {
-    id: 'arras-set',
-    categoryId: 'acc',
-    name: 'Arras Set',
-    variants: [
-      {
-        color: 'Silver',
-        size: null,
-        stores: { LGA: { available: 2, reserved: 0, inTransit: 0 }, B1: { available: 1, reserved: 0, inTransit: 0 }, GF: { available: 1, reserved: 0, inTransit: 0 } },
-      },
-      {
-        color: 'Gold',
-        size: null,
-        stores: { LGA: { available: 1, reserved: 1, inTransit: 0 }, LGF: { available: 1, reserved: 0, inTransit: 0 } },
-      },
-    ],
-  },
-  {
-    id: 'veil',
-    categoryId: 'acc',
-    name: 'Veil',
-    variants: [
-      {
-        color: 'White',
-        size: '60',
-        stores: { LGA: { available: 3, reserved: 0, inTransit: 0 }, LCA: { available: 1, reserved: 0, inTransit: 0 } },
-      },
-      {
-        color: 'Ivory',
-        size: '72',
-        stores: { LGA: { available: 1, reserved: 0, inTransit: 0 }, GF: { available: 1, reserved: 0, inTransit: 0 }, LGF: { available: 1, reserved: 0, inTransit: 0 } },
-      },
-    ],
-  },
-]
-
 /** Counts for a variant under the selected filter ('all' sums every store). */
 function variantCounts(v: StockVariant, store: string): StoreCounts {
   if (store === ALL) {
-    const total: StoreCounts = { available: 0, reserved: 0, inTransit: 0 }
+    const total: StoreCounts = { available: 0, inTransit: 0 }
     for (const s of Object.values(v.stores)) {
       if (!s) continue
       total.available += s.available
-      total.reserved += s.reserved
       total.inTransit += s.inTransit
     }
     return total
   }
-  return v.stores[store] ?? { available: 0, reserved: 0, inTransit: 0 }
+  return v.stores[store] ?? { available: 0, inTransit: 0 }
 }
 
 type LoadState = 'loading' | 'ready'
@@ -212,35 +52,48 @@ export default function Stock() {
   const [expandedProductId, setExpandedProductId] = useState<string | null>(null)
   const reduceMotion = useReducedMotion()
 
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
+  const [stores, setStores] = useState<{ code: string; name: string }[]>([])
+  const [stock, setStock] = useState<StockProduct[]>([])
+
   useEffect(() => {
     let alive = true
-    // Simulated round-trip so the loading state is exercised; swap for the
-    // real apiGet call above (with error handling) when the API is live.
-    const timer = setTimeout(() => {
-      if (alive) setLoadState('ready')
-    }, 350)
+    Promise.all([
+      apiRpc<{ id: string; name: string }[]>('get_categories', {}),
+      apiRpc<{ id: string; code: string; name: string }[]>('get_stores', {}),
+      apiRpc<StockProduct[]>('get_stock_summary', {}),
+    ])
+      .then(([cats, sts, stockRows]) => {
+        if (!alive) return
+        setCategories(cats)
+        setStores(sts.map((s) => ({ code: s.code, name: s.name })))
+        setStock(stockRows)
+        setLoadState('ready')
+      })
+      .catch(() => {
+        if (alive) setLoadState('ready')
+      })
     return () => {
       alive = false
-      clearTimeout(timer)
     }
   }, [])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return STOCK.filter(
+    return stock.filter(
       (p) =>
         (categoryId === ALL || p.categoryId === categoryId) &&
         (q === '' || p.name.toLowerCase().includes(q)),
     )
-  }, [query, categoryId])
+  }, [query, categoryId, stock])
 
   const contextTotal = useMemo(
-    () => STOCK.reduce((sum, p) => sum + productAvailable(p, storeId), 0),
-    [storeId],
+    () => stock.reduce((sum, p) => sum + productAvailable(p, storeId), 0),
+    [storeId, stock],
   )
 
   function categoryName(id: string): string {
-    return CATEGORIES.find((c) => c.id === id)?.name ?? ''
+    return categories.find((c) => c.id === id)?.name ?? ''
   }
 
   function productAvailable(p: StockProduct, store: string): number {
@@ -262,7 +115,7 @@ export default function Stock() {
           <div className="store-filter-block">
             <h2 className="store-filter-label">Filter by Store</h2>
             <div className="store-filter" role="group" aria-label="Filter by store">
-              {STORES.map((s) => {
+              {stores.map((s) => {
                 const active = storeId === s.code
                 return (
                   <motion.button
@@ -307,7 +160,7 @@ export default function Stock() {
             >
               All
             </motion.button>
-            {CATEGORIES.map((c) => (
+            {categories.map((c) => (
               <motion.button
                 type="button"
                 key={c.id}
@@ -360,7 +213,6 @@ export default function Stock() {
                         {p.variants.map((v) => {
                           const c = variantCounts(v, storeId)
                           const extras = [
-                            c.reserved > 0 ? `${c.reserved} reserved` : '',
                             c.inTransit > 0 ? `${c.inTransit} in transit` : '',
                           ]
                             .filter(Boolean)
