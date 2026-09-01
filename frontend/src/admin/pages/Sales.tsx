@@ -1,5 +1,6 @@
 ﻿import { useMemo, useState } from 'react'
 import { Ban, ReceiptText, TrendingUp, Undo2, WalletCards } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { useAdminData } from '../AdminDataContext'
 import type { PaymentMethod } from '../data'
 import { Drawer, EmptyState, Field, MetricCard, PageHeader, StatusBadge } from '../ui'
@@ -35,7 +36,8 @@ const isWithinPeriod = (value: string, period: Period) => {
 
 export default function Sales() {
   const { state, voidSale, refundSale } = useAdminData()
-  const [tab, setTab] = useState<SalesTab>('transactions')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [tab, setTab] = useState<SalesTab>((searchParams.get('tab') as SalesTab | null) ?? 'transactions')
   const [period, setPeriod] = useState<Period>('all')
   const [storeFilter, setStoreFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -144,7 +146,7 @@ export default function Sales() {
       <PageHeader
         title="Sales"
         subtitle="Read-only store transactions with controlled void and refund actions."
-        actions={<div className="segment-wrap">{tabs.map((item) => <button key={item} type="button" className={`segmented-tab ${tab === item ? 'active' : ''}`} onClick={() => setTab(item)}>{item === 'transactions' ? 'Transactions' : item === 'payments' ? 'Payments' : 'Insights'}</button>)}</div>}
+        actions={<div className="segment-wrap">{tabs.map((item) => <button key={item} type="button" className={`segmented-tab ${tab === item ? 'active' : ''}`} onClick={() => { setTab(item); setSearchParams({ tab: item }) }}>{item === 'transactions' ? 'Transactions' : item === 'payments' ? 'Payments' : 'Insights'}</button>)}</div>}
       />
 
       <div className="manager-toolbar sales-toolbar">

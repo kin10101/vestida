@@ -3749,6 +3749,209 @@
   min-width: 0;
 }
 
+/* Dashboard: gross sales card + clickable panels */
+
+.gross-sales-card {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 28px;
+  margin-bottom: 16px;
+}
+
+.gross-sales-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.gross-sales-main .metric-card-label {
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.gross-sales-main > strong {
+  color: var(--ink-dark);
+  font-size: 32px;
+  line-height: 1.1;
+}
+
+.gross-sales-main > small {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.gross-breakdown {
+  display: flex;
+  gap: 28px;
+}
+
+.gross-breakdown-item {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-width: 110px;
+  padding-left: 28px;
+  border-left: 1px solid #e7dfd4;
+}
+
+.gross-breakdown-item span {
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.gross-breakdown-item strong {
+  color: var(--ink-dark);
+  font-size: 17px;
+}
+
+.dashboard-clickable {
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+
+.dashboard-clickable:hover {
+  box-shadow: 0 8px 20px rgba(60, 40, 20, 0.1);
+}
+
+/* Sales trend line chart */
+
+.sales-trend-chart {
+  position: relative;
+  min-width: 0;
+}
+
+.sales-trend-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chart-grid {
+  stroke: #e7dfd4;
+  stroke-width: 1;
+}
+
+.chart-axis-label {
+  fill: #8a8378;
+  font-size: 11px;
+}
+
+.chart-line {
+  transition: opacity 0.15s ease;
+}
+
+.chart-point {
+  cursor: pointer;
+  stroke: #fff;
+  stroke-width: 1.5;
+}
+
+.chart-tooltip-bg {
+  fill: #fff;
+  stroke: #e7dfd4;
+  stroke-width: 1;
+}
+
+.chart-tooltip-title {
+  fill: #3a322c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chart-tooltip-sub {
+  fill: #8a8378;
+  font-size: 11px;
+}
+
+.chart-tooltip-amount {
+  fill: #8a5a44;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.chart-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* Expanded chart overlay */
+
+.chart-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  background: rgba(40, 32, 26, 0.5);
+}
+
+.chart-overlay-card {
+  width: min(960px, 100%);
+  max-height: 92vh;
+  overflow: auto;
+  padding: 22px;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.chart-overlay-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.chart-overlay-head h3 {
+  color: var(--ink-dark);
+  font-size: 18px;
+}
+
+@media (max-width: 760px) {
+  .gross-sales-card {
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .gross-breakdown {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .gross-breakdown-item {
+    padding-left: 0;
+    border-left: none;
+    min-width: 0;
+  }
+}
+
 /* Product detail: meta strip and stock flags */
 
 .detail-meta-strip {
