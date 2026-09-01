@@ -68,14 +68,17 @@ export default function Stores() {
     setAccessOpen(false)
   }
 
-  const handleDelete = (force: boolean) => {
+  const handleDelete = async (force: boolean) => {
     if (!deletedStore) return
     const message = force
       ? `Force delete ${deletedStore.name}? This removes staff, unsold inventory, credentials, and devices. Historical sales and movements remain.`
       : `Delete ${deletedStore.name}? Historical records remain.`
-    if (window.confirm(message) && deleteStore(deletedStore.id, force)) {
-      setDeleteOpen(false)
-      setDeletedStore(null)
+    if (window.confirm(message)) {
+      const ok = await deleteStore(deletedStore.id, force)
+      if (ok) {
+        setDeleteOpen(false)
+        setDeletedStore(null)
+      }
     }
   }
 

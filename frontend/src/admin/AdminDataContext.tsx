@@ -1,197 +1,183 @@
 ﻿import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
-import {
-  ADMIN_STORAGE_KEY,
-  type AdminState,
-  type Category,
-  type IntakeDraft,
-  type OrderDraft,
-  type OrderStatus,
-  type PaymentDraft,
-  type RefundDraft,
-  type VoidSaleDraft,
-  type Product,
-  type ProductVariant,
-  type StaffMember,
-  type Store,
-  type StoreAccess,
-  type UnitStatus,
-  loadAdminState,
+import type {
+  AdminState,
+  IntakeDraft,
+  OrderDraft,
+  OrderStatus,
+  PaymentDraft,
+  RefundDraft,
+  VoidSaleDraft,
+  Product,
+  ProductVariant,
+  StaffMember,
+  Store,
+  StoreAccess,
+  UnitStatus,
 } from './data'
+import { apiRpc } from '../shared/api/client'
 
 export interface AdminDataContextValue {
   state: AdminState
   setState: Dispatch<SetStateAction<AdminState>>
-  upsertCategory: (category: { id?: string; name: string; createdAt?: string }) => void
-  deleteCategory: (categoryId: string, force?: boolean) => boolean
-  upsertProduct: (product: Product) => void
-  toggleProductActive: (id: string) => void
-  bulkToggleProductActive: (ids: string[], isActive: boolean) => void
-  upsertVariant: (variant: ProductVariant) => void
+  loading: boolean
+  error: string | null
+  clearError: () => void
+  upsertCategory: (category: { id?: string; name: string; createdAt?: string }) => Promise<void>
+  deleteCategory: (categoryId: string, force?: boolean) => Promise<boolean>
+  upsertProduct: (product: Product) => Promise<void>
+  toggleProductActive: (id: string) => Promise<void>
+  bulkToggleProductActive: (ids: string[], isActive: boolean) => Promise<void>
+  upsertVariant: (variant: ProductVariant) => Promise<void>
   toggleVariantActive: (id: string) => void
-  upsertStore: (store: Store) => void
-  toggleStoreActive: (id: string) => void
-  deleteStore: (id: string, force: boolean) => boolean
-  upsertStaff: (member: StaffMember) => void
-  toggleStaffActive: (id: string) => void
-  deleteStaff: (id: string) => void
-  bulkToggleStaffActive: (ids: string[], isActive: boolean) => void
+  upsertStore: (store: Store) => Promise<void>
+  toggleStoreActive: (id: string) => Promise<void>
+  deleteStore: (id: string, force: boolean) => Promise<boolean>
+  upsertStaff: (member: StaffMember) => Promise<void>
+  toggleStaffActive: (id: string) => Promise<void>
+  deleteStaff: (id: string) => Promise<void>
+  bulkToggleStaffActive: (ids: string[], isActive: boolean) => Promise<void>
   upsertStoreAccess: (record: StoreAccess) => void
   disconnectStoreDevice: (storeId: string, deviceId: string) => void
-  applyIntake: (draft: IntakeDraft) => void
-  adjustInventoryUnit: (unitId: string, nextStatus: UnitStatus, note: string, staffName: string) => void
-  bulkAdjustInventoryUnits: (unitIds: string[], nextStatus: UnitStatus, note: string, staffName: string) => void
-  upsertOrder: (draft: OrderDraft) => void
-  updateOrderStatus: (orderId: string, status: OrderStatus) => void
-  addPayment: (draft: PaymentDraft) => void
-  voidSale: (draft: VoidSaleDraft) => void
-  refundSale: (draft: RefundDraft) => void
+  applyIntake: (draft: IntakeDraft) => Promise<void>
+  adjustInventoryUnit: (unitId: string, nextStatus: UnitStatus, note: string, staffName: string) => Promise<void>
+  bulkAdjustInventoryUnits: (unitIds: string[], nextStatus: UnitStatus, note: string, staffName: string) => Promise<void>
+  upsertOrder: (draft: OrderDraft) => Promise<void>
+  updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>
+  addPayment: (draft: PaymentDraft) => Promise<void>
+  voidSale: (draft: VoidSaleDraft) => Promise<void>
+  refundSale: (draft: RefundDraft) => Promise<void>
 }
 
 const AdminDataContext = createContext<AdminDataContextValue | undefined>(undefined)
 
-const makeId = (prefix: string) => `${prefix}-${Math.random().toString(36).slice(2, 10)}`
+// The admin write RPCs expect real UUIDs. New rows are created by the DB (send
+// p_id=null); only real UUIDs are treated as existing records to update.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const isUuid = (value?: string) => !!value && UUID_RE.test(value)
+
+const VALID_UNIT_STATUS = new Set<UnitStatus>(['in_stock', 'sold', 'in_transit'])
+
+// Coerce the JSON from admin_get_state() into a well-formed AdminState, applying
+// the same normalization the old localStorage loader used.
+function normalizeState(raw: unknown): AdminState {
+  const r = (raw ?? {}) as Partial<AdminState>
+  return {
+    stores: Array.isArray(r.stores) ? r.stores.map((store) => ({ ...store, isDeleted: (store as Store).isDeleted ?? false })) : [],
+    categories: Array.isArray(r.categories) ? r.categories : [],
+    products: Array.isArray(r.products) ? r.products : [],
+    productVariants: Array.isArray(r.productVariants) ? r.productVariants : [],
+    inventoryUnits: Array.isArray(r.inventoryUnits)
+      ? r.inventoryUnits.map((unit) => ({ ...unit, status: VALID_UNIT_STATUS.has(unit.status) ? unit.status : 'in_stock' }))
+      : [],
+    stockMovements: Array.isArray(r.stockMovements) ? r.stockMovements : [],
+    staff: Array.isArray(r.staff) ? r.staff : [],
+    storeAccess: Array.isArray(r.storeAccess) ? r.storeAccess : [],
+    orders: Array.isArray(r.orders) ? r.orders : [],
+    orderLines: Array.isArray(r.orderLines) ? r.orderLines : [],
+    payments: Array.isArray(r.payments) ? r.payments.map((payment) => ({ ...payment, kind: payment.kind ?? 'payment' })) : [],
+    salesExceptions: Array.isArray(r.salesExceptions) ? r.salesExceptions : [],
+  }
+}
+
+const EMPTY_STATE: AdminState = {
+  stores: [],
+  categories: [],
+  products: [],
+  productVariants: [],
+  inventoryUnits: [],
+  stockMovements: [],
+  staff: [],
+  storeAccess: [],
+  orders: [],
+  orderLines: [],
+  payments: [],
+  salesExceptions: [],
+}
 
 export function AdminDataProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AdminState>(() => loadAdminState())
+  const [state, setState] = useState<AdminState>(EMPTY_STATE)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
+  const refresh = async () => {
+    const next = await apiRpc<unknown>('admin_get_state', {})
+    setState(normalizeState(next))
+  }
+
+  // Hydrate the full admin dataset from Supabase on mount.
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(state))
+    let cancelled = false
+    apiRpc<unknown>('admin_get_state', {})
+      .then((next) => {
+        if (!cancelled) setState(normalizeState(next))
+      })
+      .catch((err) => {
+        console.error('[admin] failed to load state', err)
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load admin data')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
     }
-  }, [state])
+  }, [])
+
+  // Run an admin write RPC, then reload state so the database is the source of
+  // truth. Returns false (and records an error) when the write fails.
+  const persist = async (run: () => Promise<unknown>): Promise<boolean> => {
+    try {
+      await run()
+      await refresh()
+      return true
+    } catch (err) {
+      console.error('[admin] write failed', err)
+      setError(err instanceof Error ? err.message : 'Admin update failed')
+      return false
+    }
+  }
 
   const value = useMemo<AdminDataContextValue>(() => ({
     state,
     setState,
-    upsertCategory: (category) => {
-      setState((previous) => {
-        const trimmed = category.name.trim()
-        if (!trimmed) {
-          return previous
-        }
-
-        const existing = previous.categories.find((item) => item.id === category.id)
-        const nextCategory: Category = {
-          id: category.id ?? existing?.id ?? makeId('cat'),
-          name: trimmed,
-          createdAt: category.createdAt ?? existing?.createdAt ?? new Date().toISOString(),
-        }
-
-        return {
-          ...previous,
-          categories: existing
-            ? previous.categories.map((item) => (item.id === existing.id ? nextCategory : item))
-            : [...previous.categories, nextCategory],
-        }
-      })
+    loading,
+    error,
+    clearError: () => setError(null),
+    upsertCategory: async ({ id, name }) => {
+      await persist(() => apiRpc('admin_upsert_category', { p_id: isUuid(id) ? id : null, p_name: name }))
     },
-    deleteCategory: (categoryId, force = false) => {
-      const category = state.categories.find((item) => item.id === categoryId)
-      const productIds = state.products
-        .filter((product) => product.categoryId === categoryId)
-        .map((product) => product.id)
-
-      if (!category || (productIds.length > 0 && !force)) {
-        return false
-      }
-
-      setState((previous) => {
-        const productIdSet = new Set(productIds)
-        const variantIdSet = new Set(
-          previous.productVariants
-            .filter((variant) => productIdSet.has(variant.productId))
-            .map((variant) => variant.id),
-        )
-        const unitIdSet = new Set(
-          previous.inventoryUnits
-            .filter((unit) => variantIdSet.has(unit.variantId))
-            .map((unit) => unit.id),
-        )
-
-        return {
-          ...previous,
-          categories: previous.categories.filter((item) => item.id !== categoryId),
-          products: previous.products.filter((product) => !productIdSet.has(product.id)),
-          productVariants: previous.productVariants.filter((variant) => !variantIdSet.has(variant.id)),
-          inventoryUnits: previous.inventoryUnits.filter((unit) => !unitIdSet.has(unit.id)),
-          stockMovements: previous.stockMovements.filter((movement) => !unitIdSet.has(movement.unitId)),
-        }
-      })
-
-      return true
+    deleteCategory: async (categoryId, force = false) => {
+      return persist(() => apiRpc('admin_delete_category', { p_id: categoryId, p_force: force ?? false }))
     },
-    upsertProduct: (product) => {
-      setState((previous) => {
-        const trimmedName = product.name.trim()
-        const nextProduct: Product = {
-          ...product,
-          name: trimmedName,
-          description: product.description.trim(),
-          categoryId: product.categoryId,
-        }
-
-        const exists = previous.products.some((item) => item.id === product.id)
-        if (!trimmedName) {
-          return previous
-        }
-
-        return {
-          ...previous,
-          products: exists
-            ? previous.products.map((item) => (item.id === product.id ? nextProduct : item))
-            : [...previous.products, nextProduct],
-        }
-      })
-    },
-    toggleProductActive: (id) => {
-      setState((previous) => ({
-        ...previous,
-        products: previous.products.map((item) =>
-          item.id === id ? { ...item, isActive: !item.isActive } : item,
-        ),
+    upsertProduct: async (product) => {
+      await persist(() => apiRpc('admin_upsert_product', {
+        p_id: isUuid(product.id) ? product.id : null,
+        p_category_id: product.categoryId,
+        p_name: product.name,
+        p_description: product.description,
+        p_is_active: product.isActive,
       }))
     },
-    bulkToggleProductActive: (ids, isActive) => {
-      const selected = new Set(ids)
-      if (selected.size === 0) {
-        return
-      }
-
-      setState((previous) => ({
-        ...previous,
-        products: previous.products.map((item) =>
-          selected.has(item.id) ? { ...item, isActive } : item,
-        ),
-      }))
+    toggleProductActive: async (id) => {
+      const product = state.products.find((item) => item.id === id)
+      await persist(() => apiRpc('admin_toggle_products_active', { p_ids: [id], p_is_active: !product?.isActive }))
     },
-    upsertVariant: (variant) => {
-      setState((previous) => {
-        const trimmedColor = variant.color.trim()
-        const trimmedSize = variant.size.trim()
-        const trimmedSku = variant.sku.trim()
-        if (!trimmedColor || !trimmedSize || !trimmedSku) {
-          return previous
-        }
-
-        const existing = previous.productVariants.find((item) => item.id === variant.id)
-        const nextVariant: ProductVariant = {
-          ...variant,
-          color: trimmedColor,
-          size: trimmedSize,
-          sku: trimmedSku,
-          createdAt: variant.createdAt ?? existing?.createdAt ?? new Date().toISOString(),
-        }
-
-        return {
-          ...previous,
-          productVariants: existing
-            ? previous.productVariants.map((item) => (item.id === variant.id ? nextVariant : item))
-            : [...previous.productVariants, nextVariant],
-        }
-      })
+    bulkToggleProductActive: async (ids, isActive) => {
+      await persist(() => apiRpc('admin_toggle_products_active', { p_ids: ids, p_is_active: isActive }))
+    },
+    upsertVariant: async (variant) => {
+      await persist(() => apiRpc('admin_upsert_variant', {
+        p_id: isUuid(variant.id) ? variant.id : null,
+        p_product_id: variant.productId,
+        p_color: variant.color,
+        p_size: variant.size,
+        p_sku: variant.sku,
+        p_regular_price_cents: variant.regularPriceCents,
+      }))
     },
     toggleVariantActive: (id) => {
+      // product_variant has no is_active column in the DB (schema gap) — UI-only toggle.
       setState((previous) => ({
         ...previous,
         productVariants: previous.productVariants.map((item) =>
@@ -199,39 +185,25 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
         ),
       }))
     },
-    upsertStore: (store) => {
-      setState((previous) => {
-        const name = store.name.trim()
-        const code = store.code.trim()
-        if (!name || !code) {
-          return previous
-        }
-
-        const existing = previous.stores.find((item) => item.id === store.id)
-        const nextStore: Store = {
-          ...store,
-          name,
-          code,
-          createdAt: store.createdAt ?? existing?.createdAt ?? new Date().toISOString(),
-        }
-
-        return {
-          ...previous,
-          stores: existing
-            ? previous.stores.map((item) => (item.id === store.id ? nextStore : item))
-            : [...previous.stores, nextStore],
-        }
-      })
-    },
-    toggleStoreActive: (id) => {
-      setState((previous) => ({
-        ...previous,
-        stores: previous.stores.map((item) =>
-          item.id === id ? { ...item, isActive: !item.isActive } : item,
-        ),
+    upsertStore: async (store) => {
+      await persist(() => apiRpc('admin_upsert_store', {
+        p_id: isUuid(store.id) ? store.id : null,
+        p_name: store.name,
+        p_code: store.code,
+        p_is_active: store.isActive,
       }))
     },
-    deleteStore: (id, force) => {
+    toggleStoreActive: async (id) => {
+      const store = state.stores.find((item) => item.id === id)
+      if (!store) return
+      await persist(() => apiRpc('admin_upsert_store', {
+        p_id: store.id,
+        p_name: store.name,
+        p_code: store.code,
+        p_is_active: !store.isActive,
+      }))
+    },
+    deleteStore: async (id, force) => {
       const store = state.stores.find((item) => item.id === id)
       const hasOperationalRecords = state.staff.some((item) => item.storeId === id)
         || state.inventoryUnits.some((item) => item.storeId === id && item.status !== 'sold')
@@ -241,67 +213,29 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
         return false
       }
 
-      setState((previous) => ({
-        ...previous,
-        stores: previous.stores.map((item) => item.id === id ? { ...item, isActive: false, isDeleted: true } : item),
-        staff: previous.staff.filter((item) => item.storeId !== id),
-        inventoryUnits: previous.inventoryUnits.filter((item) => item.storeId !== id || item.status === 'sold'),
-        storeAccess: previous.storeAccess.filter((item) => item.storeId !== id),
-      }))
-      return true
+      return persist(() => apiRpc('admin_delete_store', { p_id: id, p_force: force ?? false }))
     },
-    upsertStaff: (member) => {
-      setState((previous) => {
-        const name = member.name.trim()
-        const title = member.title.trim()
-        if (!name || !title) {
-          return previous
-        }
-
-        const existing = previous.staff.find((item) => item.id === member.id)
-        const nextMember: StaffMember = {
-          ...member,
-          name,
-          title,
-          createdAt: member.createdAt ?? existing?.createdAt ?? new Date().toISOString(),
-        }
-
-        return {
-          ...previous,
-          staff: existing
-            ? previous.staff.map((item) => (item.id === member.id ? nextMember : item))
-            : [...previous.staff, nextMember],
-        }
-      })
-    },
-    toggleStaffActive: (id) => {
-      setState((previous) => ({
-        ...previous,
-        staff: previous.staff.map((item) =>
-          item.id === id ? { ...item, isActive: !item.isActive } : item,
-        ),
+    upsertStaff: async (member) => {
+      await persist(() => apiRpc('admin_upsert_staff', {
+        p_id: isUuid(member.id) ? member.id : null,
+        p_name: member.name,
+        p_store_id: member.storeId,
+        p_is_active: member.isActive,
       }))
     },
-    deleteStaff: (id) => {
-      setState((previous) => ({
-        ...previous,
-        staff: previous.staff.filter((item) => item.id !== id || item.isActive),
-      }))
+    toggleStaffActive: async (id) => {
+      const member = state.staff.find((item) => item.id === id)
+      if (!member) return
+      await persist(() => apiRpc('admin_toggle_staff_active', { p_ids: [id], p_is_active: !member.isActive }))
     },
-    bulkToggleStaffActive: (ids, isActive) => {
-      const selected = new Set(ids)
-      if (selected.size === 0) {
-        return
-      }
-
-      setState((previous) => ({
-        ...previous,
-        staff: previous.staff.map((item) =>
-          selected.has(item.id) ? { ...item, isActive } : item,
-        ),
-      }))
+    deleteStaff: async (id) => {
+      await persist(() => apiRpc('admin_delete_staff', { p_id: id }))
+    },
+    bulkToggleStaffActive: async (ids, isActive) => {
+      await persist(() => apiRpc('admin_toggle_staff_active', { p_ids: ids, p_is_active: isActive }))
     },
     upsertStoreAccess: (record) => {
+      // No store_access table in the DB (schema gap) — kept local-only.
       setState((previous) => {
         const existing = previous.storeAccess.find((item) => item.storeId === record.storeId)
         const nextRecord: StoreAccess = {
@@ -330,291 +264,65 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
         ),
       }))
     },
-    applyIntake: (draft) => {
-      setState((previous) => {
-        const quantity = Math.max(1, Number.isFinite(draft.quantity) ? Math.round(draft.quantity) : 1)
-        const createdAt = new Date().toISOString()
-        const newUnits = Array.from({ length: quantity }, () => ({
-          id: makeId('unit'),
-          variantId: draft.variantId,
-          unitCode: `UV-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
-          storeId: draft.storeId,
-          status: 'in_stock' as const,
-          costPriceCents: draft.costPriceCents,
-          createdAt,
-        }))
-
-        const newMovements = newUnits.map((unit, index) => ({
-          id: makeId('mv'),
-          unitId: unit.id,
-          kind: 'received' as const,
-          storeId: draft.storeId,
-          fromStoreId: null,
-          toStoreId: null,
-          staffName: draft.staffName || 'Admin',
-          note: index === 0 ? 'Stock received' : 'Additional stock received',
-          reference: `INT-${Date.now().toString().slice(-6)}`,
-          createdAt,
-        }))
-
-        return {
-          ...previous,
-          inventoryUnits: [...previous.inventoryUnits, ...newUnits],
-          stockMovements: [...previous.stockMovements, ...newMovements],
-        }
-      })
+    applyIntake: async (draft) => {
+      await persist(() => apiRpc('admin_apply_intake', {
+        p_variant_id: draft.variantId,
+        p_store_id: draft.storeId,
+        p_quantity: Math.max(1, Number.isFinite(draft.quantity) ? Math.round(draft.quantity) : 1),
+        p_cost_price_cents: draft.costPriceCents,
+        p_note: draft.staffName || null,
+      }))
     },
-    adjustInventoryUnit: (unitId, nextStatus, note, staffName) => {
-      setState((previous) => {
-        let updated = false
-
-        const nextInventory = previous.inventoryUnits.map((unit) => {
-          if (unit.id !== unitId) {
-            return unit
-          }
-          updated = true
-          return { ...unit, status: nextStatus }
-        })
-
-        if (!updated) {
-          return previous
-        }
-
-        const unit = previous.inventoryUnits.find((item) => item.id === unitId)
-        const movement = unit
-          ? {
-              id: makeId('mv'),
-              unitId,
-              kind: 'adjustment' as const,
-              storeId: unit.storeId,
-              fromStoreId: unit.storeId,
-              toStoreId: unit.storeId,
-              staffName: staffName || 'Admin',
-              note: note.trim() || 'Manual adjustment',
-              reference: `ADJ-${Date.now().toString().slice(-6)}`,
-              createdAt: new Date().toISOString(),
-            }
-          : null
-
-        return {
-          ...previous,
-          inventoryUnits: nextInventory,
-          stockMovements: movement ? [...previous.stockMovements, movement] : previous.stockMovements,
-        }
-      })
+    adjustInventoryUnit: async (unitId, nextStatus, note, _staffName) => {
+      await persist(() => apiRpc('admin_adjust_units', { p_unit_ids: [unitId], p_next_status: nextStatus, p_note: note || null }))
     },
-    bulkAdjustInventoryUnits: (unitIds, nextStatus, note, staffName) => {
-      setState((previous) => {
-        const selected = new Set(unitIds)
-        if (selected.size === 0) {
-          return previous
-        }
-
-        const nextInventory = previous.inventoryUnits.map((unit) =>
-          selected.has(unit.id) ? { ...unit, status: nextStatus } : unit,
-        )
-
-        const movements = previous.inventoryUnits
-          .filter((unit) => selected.has(unit.id))
-          .map((unit) => ({
-            id: makeId('mv'),
-            unitId: unit.id,
-            kind: 'adjustment' as const,
-            storeId: unit.storeId,
-            fromStoreId: unit.storeId,
-            toStoreId: unit.storeId,
-            staffName: staffName || 'Admin',
-            note: note.trim() || 'Bulk adjustment',
-            reference: `ADJ-${Date.now().toString().slice(-6)}`,
-            createdAt: new Date().toISOString(),
-          }))
-
-        return {
-          ...previous,
-          inventoryUnits: nextInventory,
-          stockMovements: [...previous.stockMovements, ...movements],
-        }
-      })
+    bulkAdjustInventoryUnits: async (unitIds, nextStatus, note, _staffName) => {
+      await persist(() => apiRpc('admin_adjust_units', { p_unit_ids: unitIds, p_next_status: nextStatus, p_note: note || null }))
     },
-    upsertOrder: (draft) => {
-      setState((previous) => {
-        const nextOrderId = draft.id ?? makeId('order')
-        const currentOrder = previous.orders.find((item) => item.id === nextOrderId)
-        const items = draft.items
-          .filter((item) => item.description.trim())
-          .map((item) => ({
-            id: item.id ?? makeId('line'),
-            orderId: nextOrderId,
-            variantId: item.variantId ?? null,
-            description: item.description.trim(),
-            quantity: Math.max(1, Math.round(item.quantity || 1)),
-            agreedPriceCents: Math.max(0, Math.round(item.agreedPriceCents || 0)),
-            unitId: item.unitId ?? null,
-          }))
-
-        if (!draft.customerName.trim() || items.length === 0) {
-          return previous
-        }
-
-        const nextOrder = {
-          id: nextOrderId,
+    upsertOrder: async (draft) => {
+      await persist(() => apiRpc('admin_upsert_order', {
+        p_draft: {
+          id: draft.id ?? null,
           storeId: draft.storeId,
-          customerName: draft.customerName.trim(),
+          customerName: draft.customerName,
           orderType: draft.orderType,
           status: draft.status,
-          reference: draft.reference.trim() || `V-${Date.now().toString().slice(-5)}`,
-          notes: draft.notes.trim(),
-          createdAt: currentOrder?.createdAt ?? new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        }
-
-        const nextLines = [
-          ...previous.orderLines.filter((line) => line.orderId !== nextOrderId),
-          ...items.map((item) => ({ ...item, orderId: nextOrderId })),
-        ]
-
-        return {
-          ...previous,
-          orders: currentOrder
-            ? previous.orders.map((item) => (item.id === nextOrderId ? nextOrder : item))
-            : [nextOrder, ...previous.orders],
-          orderLines: nextLines,
-        }
-      })
-    },
-    updateOrderStatus: (orderId, status) => {
-      setState((previous) => ({
-        ...previous,
-        orders: previous.orders.map((order) =>
-          order.id === orderId ? { ...order, status, updatedAt: new Date().toISOString() } : order,
-        ),
+          reference: draft.reference,
+          notes: draft.notes,
+          items: draft.items.map((item) => ({
+            variantId: item.variantId ?? null,
+            description: item.description,
+            quantity: item.quantity,
+            agreedPriceCents: item.agreedPriceCents,
+            unitId: item.unitId ?? null,
+          })),
+        },
       }))
     },
-    addPayment: (draft) => {
-      setState((previous) => ({
-        ...previous,
-        payments: [
-          ...previous.payments,
-          {
-            id: makeId('pay'),
-            orderId: draft.orderId,
-            amountCents: Math.max(0, Math.round(draft.amountCents)),
-            method: draft.method,
-            kind: 'payment',
-            receivedAt: draft.receivedAt || new Date().toISOString(),
-            receivedBy: draft.receivedBy || 'Staff',
-          },
-        ],
+    updateOrderStatus: async (orderId, status) => {
+      await persist(() => apiRpc('admin_update_order_status', { p_order_id: orderId, p_status: status }))
+    },
+    addPayment: async (draft) => {
+      await persist(() => apiRpc('admin_add_payment', {
+        p_order_id: draft.orderId,
+        p_amount_cents: draft.amountCents,
+        p_method: draft.method,
+        p_received_by: null,
+        p_note: null,
       }))
     },
-    voidSale: (draft) => {
-      setState((previous) => {
-        const order = previous.orders.find((item) => item.id === draft.orderId)
-        if (!order || order.status === 'released' || order.status === 'cancelled' || !draft.reason.trim()) {
-          return previous
-        }
-
-        const createdAt = new Date().toISOString()
-        const lines = previous.orderLines.filter((line) => line.orderId === order.id)
-        const unitIds = new Set(lines.flatMap((line) => (line.unitId ? [line.unitId] : [])))
-        const reversiblePayments = previous.payments.filter((payment) => payment.orderId === order.id && payment.kind === 'payment')
-        const reference = `VOID-${order.reference}`
-        const movements = previous.inventoryUnits
-          .filter((unit) => unitIds.has(unit.id))
-          .map((unit) => ({
-            id: makeId('mv'),
-            unitId: unit.id,
-            kind: 'adjustment' as const,
-            storeId: unit.storeId,
-            fromStoreId: order.storeId,
-            toStoreId: unit.storeId,
-            staffName: draft.processedBy || 'Admin',
-            note: `Sale voided: ${draft.reason.trim()}`,
-            reference,
-            createdAt,
-          }))
-
-        return {
-          ...previous,
-          orders: previous.orders.map((item) => item.id === order.id ? { ...item, status: 'cancelled', updatedAt: createdAt } : item),
-          inventoryUnits: previous.inventoryUnits.map((unit) => unitIds.has(unit.id) ? { ...unit, status: 'in_stock' } : unit),
-          stockMovements: [...previous.stockMovements, ...movements],
-          payments: [
-            ...previous.payments,
-            ...reversiblePayments.map((payment) => ({
-              id: makeId('pay'),
-              orderId: order.id,
-              amountCents: -payment.amountCents,
-              method: payment.method,
-              kind: 'void_reversal' as const,
-              receivedAt: createdAt,
-              receivedBy: draft.processedBy || 'Admin',
-            })),
-          ],
-          salesExceptions: [
-            ...previous.salesExceptions,
-            {
-              id: makeId('exception'),
-              orderId: order.id,
-              kind: 'void',
-              reason: draft.reason.trim(),
-              amountCents: reversiblePayments.reduce((sum, payment) => sum + payment.amountCents, 0),
-              method: null,
-              processedBy: draft.processedBy || 'Admin',
-              createdAt,
-            },
-          ],
-        }
-      })
+    voidSale: async (draft) => {
+      await persist(() => apiRpc('admin_void_sale', { p_order_id: draft.orderId, p_reason: draft.reason }))
     },
-    refundSale: (draft) => {
-      setState((previous) => {
-        const order = previous.orders.find((item) => item.id === draft.orderId)
-        if (!order || order.status === 'cancelled' || !draft.reason.trim() || draft.amountCents <= 0) {
-          return previous
-        }
-
-        const paid = previous.payments
-          .filter((payment) => payment.orderId === order.id)
-          .reduce((sum, payment) => sum + payment.amountCents, 0)
-        const amountCents = Math.min(Math.round(draft.amountCents), Math.max(paid, 0))
-        if (amountCents <= 0) {
-          return previous
-        }
-
-        const createdAt = new Date().toISOString()
-
-        return {
-          ...previous,
-          payments: [
-            ...previous.payments,
-            {
-              id: makeId('pay'),
-              orderId: order.id,
-              amountCents: -amountCents,
-              method: draft.method,
-              kind: 'refund',
-              receivedAt: createdAt,
-              receivedBy: draft.processedBy || 'Admin',
-            },
-          ],
-          salesExceptions: [
-            ...previous.salesExceptions,
-            {
-              id: makeId('exception'),
-              orderId: order.id,
-              kind: 'refund',
-              reason: draft.reason.trim(),
-              amountCents,
-              method: draft.method,
-              processedBy: draft.processedBy || 'Admin',
-              createdAt,
-            },
-          ],
-        }
-      })
+    refundSale: async (draft) => {
+      await persist(() => apiRpc('admin_refund_sale', {
+        p_order_id: draft.orderId,
+        p_amount_cents: draft.amountCents,
+        p_method: draft.method,
+        p_reason: draft.reason,
+      }))
     },
-  }), [state])
+  }), [state, loading, error])
 
   return <AdminDataContext.Provider value={value}>{children}</AdminDataContext.Provider>
 }

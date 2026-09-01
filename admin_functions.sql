@@ -559,3 +559,74 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.admin_refund_sale(uuid, int, text, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_refund_sale(uuid, int, text, text) TO authenticated;
+
+-- ============================================================
+-- Delete: staff & store.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.admin_delete_staff(p_id uuid)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  PERFORM public.assert_admin();
+  -- References on staff are informational only; clear them so the row is removable.
+  UPDATE public.stock_movement SET performed_by = NULL WHERE performed_by = p_id;
+  UPDATE public.payment SET received_by = NULL WHERE received_by = p_id;
+  UPDATE public.sales_exception SET processed_by = NULL WHERE processed_by = p_id;
+  DELETE FROM public.staff WHERE id = p_id;
+  RETURN json_build_object('deleted', true);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_delete_staff(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.admin_delete_staff(uuid) TO authenticated;
+
+-- Deletes a store: removes its staff and unsold units, then soft-deletes the
+-- store. A hard DELETE is blocked by historical rows (sales_order.store_id is
+-- NOT NULL and sold units keep history), so the store is deactivated instead.
+CREATE OR REPLACE FUNCTION public.admin_delete_store(p_id uuid, p_force boolean DEFAULT false)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE v_exists boolean; v_op int;
+BEGIN
+  PERFORM public.assert_admin();
+  SELECT EXISTS(SELECT 1 FROM public.store WHERE id = p_id) INTO v_exists;
+  IF NOT v_exists THEN
+    RETURN json_build_object('deleted', false, 'reason', 'not_found');
+  END IF;
+
+  SELECT COUNT(*) INTO v_op
+  FROM (
+    SELECT 1 FROM public.staff WHERE store_id = p_id
+    UNION ALL
+    SELECT 1 FROM public.inventory_unit WHERE current_store_id = p_id AND status <> 'sold'
+  ) t;
+
+  IF v_op > 0 AND NOT p_force THEN
+    RETURN json_build_object('deleted', false, 'reason', 'has_records');
+  END IF;
+
+  -- Clear informational staff references, then remove the store's staff.
+  UPDATE public.stock_movement SET performed_by = NULL
+    WHERE performed_by IN (SELECT id FROM public.staff WHERE store_id = p_id);
+  UPDATE public.payment SET received_by = NULL
+    WHERE received_by IN (SELECT id FROM public.staff WHERE store_id = p_id);
+  UPDATE public.sales_exception SET processed_by = NULL
+    WHERE processed_by IN (SELECT id FROM public.staff WHERE store_id = p_id);
+  DELETE FROM public.staff WHERE store_id = p_id;
+
+  -- Remove the store's unsold units and their movements.
+  DELETE FROM public.stock_movement
+    WHERE unit_id IN (SELECT id FROM public.inventory_unit WHERE current_store_id = p_id AND status <> 'sold');
+  DELETE FROM public.inventory_unit WHERE current_store_id = p_id AND status <> 'sold';
+
+  UPDATE public.store SET is_active = false, updated_at = now() WHERE id = p_id;
+  RETURN json_build_object('deleted', true);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_delete_store(uuid, boolean) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.admin_delete_store(uuid, boolean) TO authenticated;

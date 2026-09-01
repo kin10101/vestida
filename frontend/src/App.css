@@ -1957,6 +1957,45 @@
   font-size: 30px;
 }
 
+.admin-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  color: var(--ink-soft, #6b7280);
+  font-size: 14px;
+}
+
+.admin-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fdecec;
+  border: 1px solid #f3c2c2;
+  color: #a02626;
+  font-size: 13px;
+}
+
+.admin-error-dismiss {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.form-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-soft, #6b7280);
+}
+
 .bulk-toolbar {
   display: inline-flex;
   align-items: center;

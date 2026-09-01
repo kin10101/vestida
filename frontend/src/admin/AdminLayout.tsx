@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { BarChart3, Boxes, LayoutDashboard, LogOut, Store, Tags } from 'lucide-react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { useAdminData } from './AdminDataContext'
 
 const navItems = [
   { to: '/admin', label: 'Dashboard', shortLabel: 'Home', end: true, icon: LayoutDashboard },
@@ -13,6 +14,7 @@ const navItems = [
 
 export default function AdminLayout() {
   const { signOut } = useAuth()
+  const { loading, error, clearError } = useAdminData()
 
   return (
     <div className="admin-app">
@@ -61,7 +63,19 @@ export default function AdminLayout() {
       </aside>
 
       <main className="admin-main">
-        <Outlet />
+        {loading ? (
+          <div className="admin-loading" role="status">Loading admin data…</div>
+        ) : (
+          <>
+            {error ? (
+              <div className="admin-error-banner" role="alert">
+                <span>{error}</span>
+                <button type="button" className="admin-error-dismiss" aria-label="Dismiss" onClick={clearError}>×</button>
+              </div>
+            ) : null}
+            <Outlet />
+          </>
+        )}
       </main>
     </div>
   )

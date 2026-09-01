@@ -200,7 +200,7 @@ export default function Products() {
   }
 
   const handleSaveProduct = () => {
-    if (!productDraft.name.trim()) {
+    if (!productDraft.name.trim() || !productDraft.categoryId) {
       return
     }
 
@@ -270,11 +270,207 @@ export default function Products() {
     clearBulkSelection()
   }
 
+  const categoryDrawer = (
+    <Drawer
+      open={categoryModalOpen}
+      size="panel"
+      title="Manage categories"
+      subtitle="Create, rename, or remove product categories."
+      onClose={() => setCategoryModalOpen(false)}
+    >
+      <div className="form-grid">
+        <Field label={categoryDraft.id ? 'Category name' : 'New category'}>
+          <div className="inline-actions">
+            <input value={categoryDraft.name} onChange={(event) => setCategoryDraft((previous) => ({ ...previous, name: event.target.value }))} className="admin-input" placeholder="E.g. Dresses" />
+            <button type="button" className="primary-button" onClick={saveCategory}>{categoryDraft.id ? 'Save' : 'Add'}</button>
+          </div>
+        </Field>
+      </div>
+      <div className="record-stack compact category-manager-list">
+        {state.categories.map((category) => {
+          const productCount = state.products.filter((product) => product.categoryId === category.id).length
+          return (
+            <div key={category.id} className="record-card stock-row">
+              <div className="record-main">
+                <strong>{category.name}</strong>
+                <small>{productCount === 0 ? 'Unused category' : `${productCount} product${productCount === 1 ? '' : 's'} assigned`}</small>
+              </div>
+              <div className="record-actions compact-actions">
+                <button type="button" className="text-button" onClick={() => openCategoryModal(category)}>Edit</button>
+                <button type="button" className="text-button destructive-text" onClick={() => removeCategory(category.id)}>{productCount === 0 ? 'Delete' : 'Force delete'}</button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </Drawer>
+  )
+
+  const productDrawer = (
+    <Drawer
+      open={productModalOpen}
+      size="panel"
+      title={productDraft.id ? 'Edit product' : 'Add product'}
+      subtitle="Keep the catalog active and easy to scan."
+      onClose={() => setProductModalOpen(false)}
+      footer={
+        <div className="modal-footer-actions">
+          <button type="button" className="secondary-button" onClick={() => setProductModalOpen(false)}>
+            Cancel
+          </button>
+          <button type="button" className="primary-button" onClick={handleSaveProduct} disabled={state.categories.length === 0}>
+            Save product
+          </button>
+        </div>
+      }
+    >
+      <div className="form-grid">
+        <Field label="Product name">
+          <input
+            value={productDraft.name}
+            onChange={(event) => setProductDraft((previous) => ({ ...previous, name: event.target.value }))}
+            className="admin-input"
+            placeholder="E.g. Luna Blouse"
+          />
+        </Field>
+        <Field label="Category">
+          {state.categories.length === 0 ? (
+            <p className="form-hint">Every product needs a category. Create one via “Add category” first.</p>
+          ) : (
+            <select
+              value={productDraft.categoryId}
+              onChange={(event) => setProductDraft((previous) => ({ ...previous, categoryId: event.target.value }))}
+              className="admin-select"
+            >
+              {state.categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={productDraft.isActive}
+            onChange={(event) => setProductDraft((previous) => ({ ...previous, isActive: event.target.checked }))}
+          />
+          <span>Active</span>
+        </label>
+        <Field label="Description">
+          <textarea
+            value={productDraft.description}
+            onChange={(event) => setProductDraft((previous) => ({ ...previous, description: event.target.value }))}
+            className="admin-textarea"
+            rows={4}
+            placeholder="Write a short product summary"
+          />
+        </Field>
+      </div>
+    </Drawer>
+  )
+
+  const variantDrawer = (
+    <Drawer
+      open={variantModalOpen}
+      size="panel"
+      title={variantDraft.id ? 'Edit variant' : 'Add variant'}
+      subtitle="Manage color, size, pricing, and availability."
+      onClose={() => setVariantModalOpen(false)}
+      footer={
+        <div className="modal-footer-actions">
+          <button type="button" className="secondary-button" onClick={() => setVariantModalOpen(false)}>
+            Cancel
+          </button>
+          <button type="button" className="primary-button" onClick={handleSaveVariant}>
+            Save variant
+          </button>
+        </div>
+      }
+    >
+      <div className="form-grid">
+        <Field label="Color">
+          <input
+            value={variantDraft.color}
+            onChange={(event) => setVariantDraft((previous) => ({ ...previous, color: event.target.value }))}
+            className="admin-input"
+            placeholder="Ivory"
+          />
+        </Field>
+        <Field label="Size">
+          <input
+            value={variantDraft.size}
+            onChange={(event) => setVariantDraft((previous) => ({ ...previous, size: event.target.value }))}
+            className="admin-input"
+            placeholder="M"
+          />
+        </Field>
+        <Field label="SKU">
+          <input
+            value={variantDraft.sku}
+            onChange={(event) => setVariantDraft((previous) => ({ ...previous, sku: event.target.value }))}
+            className="admin-input"
+            placeholder="LUNA-IV-M"
+          />
+        </Field>
+        <Field label="Regular price">
+          <input
+            type="number"
+            min="0"
+            value={variantDraft.regularPriceCents / 100}
+            onChange={(event) =>
+              setVariantDraft((previous) => ({
+                ...previous,
+                regularPriceCents: Math.round(Number(event.target.value || 0) * 100),
+              }))
+            }
+            className="admin-input"
+          />
+        </Field>
+        <Field label="Cost price">
+          <input
+            type="number"
+            min="0"
+            value={variantDraft.costPriceCents / 100}
+            onChange={(event) =>
+              setVariantDraft((previous) => ({
+                ...previous,
+                costPriceCents: Math.round(Number(event.target.value || 0) * 100),
+              }))
+            }
+            className="admin-input"
+          />
+        </Field>
+        <label className="check-row large">
+          <input
+            type="checkbox"
+            checked={variantDraft.isActive}
+            onChange={(event) => setVariantDraft((previous) => ({ ...previous, isActive: event.target.checked }))}
+          />
+          <span>Active variant</span>
+        </label>
+      </div>
+    </Drawer>
+  )
+
   if (!selectedProduct) {
     return (
       <div className="admin-page">
         <PageHeader title="Products" subtitle="Catalog and variant management." />
-        <EmptyState title="No products yet" description="Create your first product to start the boutique catalog." action={<button type="button" className="primary-button" onClick={() => openProductModal()}>Add product</button>} />
+        <EmptyState
+          title="No products yet"
+          description="Create a category first, then add your first product."
+          action={
+            <div className="inline-actions">
+              <button type="button" className="secondary-button" onClick={() => openCategoryModal()}>Add category</button>
+              <button type="button" className="primary-button" onClick={() => openProductModal()}>Add product</button>
+            </div>
+          }
+        />
+        {categoryDrawer}
+        {productDrawer}
+        {variantDrawer}
       </div>
     )
   }
@@ -490,179 +686,11 @@ export default function Products() {
         </section>
       </div>
 
-      <Drawer
-        open={categoryModalOpen}
-        size="panel"
-        title="Manage categories"
-        subtitle="Create, rename, or remove product categories."
-        onClose={() => setCategoryModalOpen(false)}
-      >
-        <div className="form-grid">
-          <Field label={categoryDraft.id ? 'Category name' : 'New category'}>
-            <div className="inline-actions">
-              <input value={categoryDraft.name} onChange={(event) => setCategoryDraft((previous) => ({ ...previous, name: event.target.value }))} className="admin-input" placeholder="E.g. Dresses" />
-              <button type="button" className="primary-button" onClick={saveCategory}>{categoryDraft.id ? 'Save' : 'Add'}</button>
-            </div>
-          </Field>
-        </div>
-        <div className="record-stack compact category-manager-list">
-          {state.categories.map((category) => {
-            const productCount = state.products.filter((product) => product.categoryId === category.id).length
-            return (
-              <div key={category.id} className="record-card stock-row">
-                <div className="record-main">
-                  <strong>{category.name}</strong>
-                  <small>{productCount === 0 ? 'Unused category' : `${productCount} product${productCount === 1 ? '' : 's'} assigned`}</small>
-                </div>
-                <div className="record-actions compact-actions">
-                  <button type="button" className="text-button" onClick={() => openCategoryModal(category)}>Edit</button>
-                  <button type="button" className="text-button destructive-text" onClick={() => removeCategory(category.id)}>{productCount === 0 ? 'Delete' : 'Force delete'}</button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </Drawer>
+      {categoryDrawer}
 
-      <Drawer
-        open={productModalOpen}
-        size="panel"
-        title={productDraft.id ? 'Edit product' : 'Add product'}
-        subtitle="Keep the catalog active and easy to scan."
-        onClose={() => setProductModalOpen(false)}
-        footer={
-          <div className="modal-footer-actions">
-            <button type="button" className="secondary-button" onClick={() => setProductModalOpen(false)}>
-              Cancel
-            </button>
-            <button type="button" className="primary-button" onClick={handleSaveProduct}>
-              Save product
-            </button>
-          </div>
-        }
-      >
-        <div className="form-grid">
-          <Field label="Product name">
-            <input
-              value={productDraft.name}
-              onChange={(event) => setProductDraft((previous) => ({ ...previous, name: event.target.value }))}
-              className="admin-input"
-              placeholder="E.g. Luna Blouse"
-            />
-          </Field>
-          <Field label="Category">
-            <select
-              value={productDraft.categoryId}
-              onChange={(event) => setProductDraft((previous) => ({ ...previous, categoryId: event.target.value }))}
-              className="admin-select"
-            >
-              {state.categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={productDraft.isActive}
-              onChange={(event) => setProductDraft((previous) => ({ ...previous, isActive: event.target.checked }))}
-            />
-            <span>Active</span>
-          </label>
-          <Field label="Description">
-            <textarea
-              value={productDraft.description}
-              onChange={(event) => setProductDraft((previous) => ({ ...previous, description: event.target.value }))}
-              className="admin-textarea"
-              rows={4}
-              placeholder="Write a short product summary"
-            />
-          </Field>
-        </div>
-      </Drawer>
+      {productDrawer}
 
-      <Drawer
-        open={variantModalOpen}
-        size="panel"
-        title={variantDraft.id ? 'Edit variant' : 'Add variant'}
-        subtitle="Manage color, size, pricing, and availability."
-        onClose={() => setVariantModalOpen(false)}
-        footer={
-          <div className="modal-footer-actions">
-            <button type="button" className="secondary-button" onClick={() => setVariantModalOpen(false)}>
-              Cancel
-            </button>
-            <button type="button" className="primary-button" onClick={handleSaveVariant}>
-              Save variant
-            </button>
-          </div>
-        }
-      >
-        <div className="form-grid">
-          <Field label="Color">
-            <input
-              value={variantDraft.color}
-              onChange={(event) => setVariantDraft((previous) => ({ ...previous, color: event.target.value }))}
-              className="admin-input"
-              placeholder="Ivory"
-            />
-          </Field>
-          <Field label="Size">
-            <input
-              value={variantDraft.size}
-              onChange={(event) => setVariantDraft((previous) => ({ ...previous, size: event.target.value }))}
-              className="admin-input"
-              placeholder="M"
-            />
-          </Field>
-          <Field label="SKU">
-            <input
-              value={variantDraft.sku}
-              onChange={(event) => setVariantDraft((previous) => ({ ...previous, sku: event.target.value }))}
-              className="admin-input"
-              placeholder="LUNA-IV-M"
-            />
-          </Field>
-          <Field label="Regular price">
-            <input
-              type="number"
-              min="0"
-              value={variantDraft.regularPriceCents / 100}
-              onChange={(event) =>
-                setVariantDraft((previous) => ({
-                  ...previous,
-                  regularPriceCents: Math.round(Number(event.target.value || 0) * 100),
-                }))
-              }
-              className="admin-input"
-            />
-          </Field>
-          <Field label="Cost price">
-            <input
-              type="number"
-              min="0"
-              value={variantDraft.costPriceCents / 100}
-              onChange={(event) =>
-                setVariantDraft((previous) => ({
-                  ...previous,
-                  costPriceCents: Math.round(Number(event.target.value || 0) * 100),
-                }))
-              }
-              className="admin-input"
-            />
-          </Field>
-          <label className="check-row large">
-            <input
-              type="checkbox"
-              checked={variantDraft.isActive}
-              onChange={(event) => setVariantDraft((previous) => ({ ...previous, isActive: event.target.checked }))}
-            />
-            <span>Active variant</span>
-          </label>
-        </div>
-      </Drawer>
+      {variantDrawer}
     </div>
   )
 }
