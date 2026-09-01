@@ -92,6 +92,7 @@ export default function Sale() {
   const [method, setMethod] = useState<PaymentMethod>('cash')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
+  const [saleError, setSaleError] = useState<string | null>(null)
 
   // Catalog, categories and staff loaded from the API.
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
@@ -246,6 +247,7 @@ export default function Sale() {
   async function completeSale() {
     if (items.length === 0) return
     const clientRef = `${storeCode}-${dateStamp()}-${String(Math.floor(100 + Math.random() * 900))}`
+    setSaleError(null)
     try {
       await apiRpc('log_sale', {
         p_order_type: orderType,
@@ -260,8 +262,13 @@ export default function Sale() {
         p_care_of: null, // staff-uuid mapping not wired yet; dispatched_by is informational
         p_client_ref: clientRef,
       })
-    } catch {
-      // Persist the order locally so the sale isn't lost, then still show done.
+    } catch (err) {
+      setSaleError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Could not save the sale. Please try again.',
+      )
+      return
     }
     setOrderNo(clientRef)
     setStep('done')
@@ -270,6 +277,7 @@ export default function Sale() {
   function startOver() {
     setStep('gate')
     setOrderType('ready_made')
+    setSaleError(null)
     setQuery('')
     setCategoryId(ALL)
     setSelectedId(null)
@@ -823,6 +831,12 @@ export default function Sale() {
             )}
           </AnimatePresence>
         </div>
+
+        {saleError ? (
+          <div className="sale-error" role="alert">
+            <span>{saleError}</span>
+          </div>
+        ) : null}
 
         {footer}
       </div>

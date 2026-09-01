@@ -118,6 +118,7 @@ export default function Transfers() {
   const [items, setItems] = useState<TransferItem[]>([])
   const [note, setNote] = useState('')
   const [sentRef, setSentRef] = useState('')
+  const [transferError, setTransferError] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [cancelId, setCancelId] = useState<string | null>(null)
 
@@ -216,6 +217,7 @@ export default function Transfers() {
   async function sendTransfer() {
     if (!toStoreId || items.length === 0) return
     const clientRef = `TR-${Date.now().toString().slice(-6)}`
+    setTransferError(null)
     try {
       await apiRpc('transfer_stock', {
         p_to_store_id: toStoreId,
@@ -225,8 +227,12 @@ export default function Transfers() {
       })
       setSentRef(clientRef)
       setView('sent')
-    } catch {
-      // Keep the user on review; nothing durable was written.
+    } catch (err) {
+      setTransferError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Could not send the transfer. Please try again.',
+      )
     }
   }
 
@@ -246,6 +252,7 @@ export default function Transfers() {
   function startOver() {
     setToStoreId(null)
     setQuery('')
+    setTransferError(null)
     setCategoryId(ALL)
     setSelectedId(null)
     setColor(null)
@@ -697,6 +704,11 @@ export default function Transfers() {
       </div>
     ) : view === 'review' ? (
       <div className="sale-footer">
+        {transferError ? (
+          <div className="sale-error" role="alert">
+            <span>{transferError}</span>
+          </div>
+        ) : null}
         <button
           type="button"
           className="primary-btn"

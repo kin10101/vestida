@@ -38,11 +38,17 @@ const PAYMENT_META: Record<PaymentMethod, { label: string; icon: typeof Banknote
   bank_transfer: { label: 'Bank Transfer', icon: Landmark },
 }
 
+function getLocalDateKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+    date.getDate(),
+  ).padStart(2, '0')}`
+}
+
 function getDateKey(offsetDays = 0) {
   const date = new Date()
   date.setHours(0, 0, 0, 0)
   date.setDate(date.getDate() + offsetDays)
-  return date.toISOString().slice(0, 10)
+  return getLocalDateKey(date)
 }
 
 function formatTime(value: string) {
@@ -86,7 +92,7 @@ export default function History() {
   const selectedDayKey = day === 'today' ? getDateKey(0) : getDateKey(-1)
 
   const dayOrders = useMemo(
-    () => orders.filter((order) => order.dateKey === selectedDayKey),
+    () => orders.filter((order) => getLocalDateKey(new Date(order.createdAt)) === selectedDayKey),
     [orders, selectedDayKey],
   )
 
