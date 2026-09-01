@@ -248,17 +248,17 @@ export default function Sale() {
     const clientRef = `${storeCode}-${dateStamp()}-${String(Math.floor(100 + Math.random() * 900))}`
     try {
       await apiRpc('log_sale', {
-        order_type: orderType,
-        customer_name: customerName.trim() || null,
-        items: items.map((i) => ({
+        p_order_type: orderType,
+        p_customer_name: customerName.trim() || null,
+        p_items: items.map((i) => ({
           variant_id: i.variantId ?? null,
           quantity: i.qty,
           agreed_price: i.price,
           spec_note: i.spec ?? null,
         })),
-        payment: paid > 0 ? { method, amount: paid, note: note.trim() || null } : null,
-        care_of: null, // staff-uuid mapping not wired yet; dispatched_by is informational
-        client_ref: clientRef,
+        p_payment: paid > 0 ? { method, amount: paid, note: note.trim() || null } : null,
+        p_care_of: null, // staff-uuid mapping not wired yet; dispatched_by is informational
+        p_client_ref: clientRef,
       })
     } catch {
       // Persist the order locally so the sale isn't lost, then still show done.

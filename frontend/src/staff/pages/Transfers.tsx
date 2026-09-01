@@ -218,10 +218,10 @@ export default function Transfers() {
     const clientRef = `TR-${Date.now().toString().slice(-6)}`
     try {
       await apiRpc('transfer_stock', {
-        to_store_id: toStoreId,
-        items: items.map((i) => ({ variant_id: i.variantId, quantity: i.qty })),
-        note: note.trim() || null,
-        client_ref: clientRef,
+        p_to_store_id: toStoreId,
+        p_items: items.map((i) => ({ variant_id: i.variantId, quantity: i.qty })),
+        p_note: note.trim() || null,
+        p_client_ref: clientRef,
       })
       setSentRef(clientRef)
       setView('sent')
