@@ -121,7 +121,7 @@ export default function SalesTrendChart({
   const pathFor = (amounts: number[]) =>
     amounts.map((amount, index) => `${index === 0 ? 'M' : 'L'} ${xFor(index).toFixed(1)} ${yFor(amount).toFixed(1)}`).join(' ')
 
-  const activeStoreName = active ? series.find((s) => s.store.id === active.storeId)?.store.name : ''
+  const activeStoreName = active ? (series.find((s) => s.store.id === active.storeId)?.store.name ?? '') : ''
   const tooltipX = active ? xFor(active.index) : 0
   const tooltipY = active ? yFor(active.amount) : 0
   const tipW = 200

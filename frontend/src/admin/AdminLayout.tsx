@@ -14,7 +14,7 @@ const navItems = [
 
 export default function AdminLayout() {
   const { signOut } = useAuth()
-  const { loading, error, clearError } = useAdminData()
+  const { loading, error, clearError, reload } = useAdminData()
 
   return (
     <div className="admin-app">
@@ -69,8 +69,13 @@ export default function AdminLayout() {
           <>
             {error ? (
               <div className="admin-error-banner" role="alert">
-                <span>{error}</span>
-                <button type="button" className="admin-error-dismiss" aria-label="Dismiss" onClick={clearError}>×</button>
+                <span className="admin-error-banner-text">{error}</span>
+                <div className="admin-error-banner-actions">
+                  <button type="button" className="admin-error-retry" onClick={() => void reload()}>
+                    Retry
+                  </button>
+                  <button type="button" className="admin-error-dismiss" aria-label="Dismiss" onClick={clearError}>×</button>
+                </div>
               </div>
             ) : null}
             <Outlet />

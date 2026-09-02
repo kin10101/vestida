@@ -25,6 +25,7 @@ export interface AdminDataContextValue {
   loading: boolean
   error: string | null
   clearError: () => void
+  reload: () => Promise<void>
   upsertCategory: (category: { id?: string; name: string; createdAt?: string }) => Promise<void>
   deleteCategory: (categoryId: string, force?: boolean) => Promise<boolean>
   upsertProduct: (product: Product) => Promise<void>
@@ -124,23 +125,26 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
     setState(normalizeState(next))
   }
 
+  // Hydrate the full admin dataset from Supabase. Exposed as `reload` so the UI
+  // can retry after a failed initial load.
+  const hydrate = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const next = await apiRpc<unknown>('admin_get_state', {})
+      setState(normalizeState(next))
+    } catch (err) {
+      console.error('[admin] failed to load state', err)
+      setError(err instanceof Error ? err.message : 'Failed to load admin data')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Hydrate the full admin dataset from Supabase on mount.
   useEffect(() => {
-    let cancelled = false
-    apiRpc<unknown>('admin_get_state', {})
-      .then((next) => {
-        if (!cancelled) setState(normalizeState(next))
-      })
-      .catch((err) => {
-        console.error('[admin] failed to load state', err)
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load admin data')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
+    void hydrate()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Run an admin write RPC, then reload state so the database is the source of
@@ -163,6 +167,7 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
     loading,
     error,
     clearError: () => setError(null),
+    reload: hydrate,
     upsertCategory: async ({ id, name }) => {
       await persist(() => apiRpc('admin_upsert_category', { p_id: isUuid(id) ? id : null, p_name: name }))
     },

@@ -1995,6 +1995,34 @@
   font-size: 13px;
 }
 
+.admin-error-banner-text {
+  flex: 1;
+}
+
+.admin-error-banner-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.admin-error-retry {
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 5px 10px;
+}
+
+.admin-error-retry:hover {
+  background: rgba(160, 38, 38, 0.08);
+}
+
 .admin-error-dismiss {
   border: none;
   background: transparent;
