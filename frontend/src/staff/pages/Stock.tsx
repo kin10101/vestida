@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion, MotionConfig, useReducedMotion } from 'framer-motion'
 import { ChevronDown, ChevronUp, Search } from 'lucide-react'
-import LoadingSpinner from '../../shared/components/LoadingSpinner'
 import { apiRpc } from '../../shared/api/client'
 import { useHeaderTitleValue } from '../headerTitle'
 
@@ -40,12 +39,9 @@ function variantCounts(v: StockVariant, store: string): StoreCounts {
   return v.stores[store] ?? { available: 0, inTransit: 0 }
 }
 
-type LoadState = 'loading' | 'ready'
-
 export default function Stock() {
   useHeaderTitleValue('Check Stock', 'Find a piece, in this store or another.')
 
-  const [loadState, setLoadState] = useState<LoadState>('loading')
   const [query, setQuery] = useState('')
   const [categoryId, setCategoryId] = useState(ALL)
   const [storeId, setStoreId] = useState(ALL)
@@ -68,11 +64,8 @@ export default function Stock() {
         setCategories(cats)
         setStores(sts.map((s) => ({ code: s.code, name: s.name })))
         setStock(stockRows)
-        setLoadState('ready')
       })
-      .catch(() => {
-        if (alive) setLoadState('ready')
-      })
+      .catch(() => undefined)
     return () => {
       alive = false
     }
@@ -108,10 +101,6 @@ export default function Stock() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2, ease: 'easeOut' }}
       >
-      {loadState === 'loading' ? (
-        <LoadingSpinner />
-      ) : (
-        <>
           <div className="store-filter-block">
             <h2 className="store-filter-label">Filter by Store</h2>
             <div className="store-filter" role="group" aria-label="Filter by store">
@@ -244,8 +233,6 @@ export default function Stock() {
               })}
             </div>
           )}
-        </>
-      )}
       </motion.div>
     </MotionConfig>
   )
