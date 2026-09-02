@@ -249,11 +249,8 @@ export default function Products() {
   }
 
   const handleToggleProduct = (product: Product) => {
-    const nextText = product.isActive ? 'deactivate this product' : 'reactivate this product'
-    const confirmed = window.confirm(`Are you sure you want to ${nextText}?`)
-    if (confirmed) {
-      toggleProductActive(product.id)
-    }
+    toggleProductActive(product.id)
+    setToast(product.isActive ? `Disabled product “${product.name}”` : `Enabled product “${product.name}”`)
   }
 
   // --- Matrix edit mode ------------------------------------------------
