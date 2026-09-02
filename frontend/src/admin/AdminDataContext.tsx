@@ -65,7 +65,16 @@ function normalizeState(raw: unknown): AdminState {
   return {
     stores: Array.isArray(r.stores) ? r.stores.map((store) => ({ ...store, isDeleted: (store as Store).isDeleted ?? false })) : [],
     categories: Array.isArray(r.categories) ? r.categories : [],
-    products: Array.isArray(r.products) ? r.products : [],
+    products: Array.isArray(r.products)
+      ? (r.products as Product[]).map((product) => ({
+          ...product,
+          skuPrefix: product.skuPrefix ?? '',
+          colors: product.colors ?? [],
+          sizes: product.sizes ?? [],
+          costPriceCents: product.costPriceCents ?? 0,
+          regularPriceCents: product.regularPriceCents ?? 0,
+        }))
+      : [],
     productVariants: Array.isArray(r.productVariants) ? r.productVariants : [],
     inventoryUnits: Array.isArray(r.inventoryUnits)
       ? r.inventoryUnits.map((unit) => ({ ...unit, status: VALID_UNIT_STATUS.has(unit.status) ? unit.status : 'in_stock' }))
@@ -157,6 +166,11 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
         p_name: product.name,
         p_description: product.description,
         p_is_active: product.isActive,
+        p_sku_prefix: product.skuPrefix,
+        p_colors: product.colors,
+        p_sizes: product.sizes,
+        p_cost_price_cents: product.costPriceCents,
+        p_regular_price_cents: product.regularPriceCents,
       }))
     },
     toggleProductActive: async (id) => {

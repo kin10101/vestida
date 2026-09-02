@@ -25,6 +25,14 @@ export interface Product {
   name: string
   description: string
   isActive: boolean
+  // Product-level catalog definition (the "matrix"): a SKU prefix plus the
+  // independent color and size lists. Every (color x size) combo becomes a
+  // concrete product_variant row with SKU = [prefix]-[color3]-[size].
+  skuPrefix: string
+  colors: string[]
+  sizes: string[]
+  costPriceCents: number
+  regularPriceCents: number
   createdAt: string
 }
 

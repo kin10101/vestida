@@ -4141,3 +4141,373 @@
   .variant-status { grid-column: 2; grid-row: 1 / span 3; justify-self: end; }
   .variant-table-actions { grid-column: 2; grid-row: 4; justify-self: end; }
 }
+
+/* ============================================================
+   Products screen (catalogue 40% | product details 60%)
+   ============================================================ */
+.two-column-layout.product-master-detail {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+}
+
+/* ---- Catalogue card ---- */
+.product-catalogue {
+  display: flex;
+  flex-direction: column;
+}
+
+.product-catalogue .catalogue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.product-catalogue .catalogue-head h3 {
+  margin: 0;
+  color: var(--ink-dark);
+  font-size: 17px;
+}
+
+.catalogue-select {
+  white-space: nowrap;
+}
+
+.catalogue-search {
+  width: 100%;
+  min-width: 0 !important;
+  margin-bottom: 12px;
+}
+
+.catalogue-search input {
+  width: 100%;
+  min-width: 0 !important;
+}
+
+.catalogue-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.catalogue-controls .chip-scroll {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.catalogue-add {
+  flex: 0 0 auto;
+}
+
+.catalogue-list {
+  margin-top: 2px;
+}
+
+.catalogue-item {
+  cursor: pointer;
+}
+
+.catalogue-item-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.catalogue-item-name {
+  overflow: hidden;
+  color: var(--ink-dark);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.catalogue-item .catalogue-item-cat {
+  font-size: 10px;
+  font-weight: 700;
+  min-height: 20px;
+  padding: 2px 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.catalogue-chevron {
+  flex: 0 0 auto;
+  color: var(--taupe-dark);
+}
+
+/* ---- Product details card ---- */
+.product-details {
+  align-self: start;
+}
+
+.product-detail-head {
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.detail-title-block {
+  min-width: 0;
+  flex: 1;
+}
+
+.detail-title-block h3 {
+  margin: 0;
+}
+
+.product-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 9px 0 2px;
+}
+
+.product-description {
+  margin: 8px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.detail-head-tools {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.mini-icon-btn {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border-beige);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--taupe-dark);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.mini-icon-btn:hover {
+  background: var(--taupe-tint);
+}
+
+.mini-icon-btn.add {
+  border-color: var(--taupe);
+  background: var(--taupe-tint);
+}
+
+/* ---- Matrix (view mode) ---- */
+.matrix-block {
+  margin: 2px 0 14px;
+}
+
+.matrix-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.matrix-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.matrix-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 6px 0 10px;
+}
+
+.matrix-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--border-beige);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.matrix-stat span {
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.matrix-stat strong {
+  overflow: hidden;
+  color: var(--ink-dark);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+.matrix-current {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.matrix-current-sku {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px;
+  border: 1px dashed var(--taupe);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.matrix-current-stock {
+  display: flex;
+  width: 128px;
+  flex: 0 0 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--border-beige);
+  border-radius: 12px;
+  background: var(--bg);
+  text-align: center;
+}
+
+.matrix-current span {
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.matrix-current-sku strong {
+  overflow: hidden;
+  color: var(--ink-dark);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+
+.matrix-current-stock strong {
+  color: var(--ink-dark);
+  font-size: 24px;
+}
+
+.sku-mono {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  letter-spacing: 0.02em;
+}
+
+.add-stock-button {
+  width: 100%;
+  justify-content: center;
+}
+
+/* ---- Matrix (edit mode) ---- */
+.matrix-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.matrix-edit-group {
+  margin: 8px 0 2px;
+}
+
+.matrix-edit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.matrix-edit-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.matrix-edit-item .admin-input,
+.matrix-add-item .admin-input {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.matrix-add-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.matrix-edit-prices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.matrix-edit-prices .field-shell {
+  margin-bottom: 0;
+}
+
+/* ---- Add-stock modal summary ---- */
+.stock-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.stock-summary-sku {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1000px) {
+  .two-column-layout.product-master-detail {
+    grid-template-columns: 1fr;
+  }
+
+  .product-details {
+    position: static;
+  }
+}
+
+@media (max-width: 640px) {
+  .matrix-edit-prices,
+  .matrix-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .matrix-current {
+    flex-direction: column;
+  }
+
+  .matrix-current-stock {
+    width: 100%;
+    text-align: left;
+  }
+}
+

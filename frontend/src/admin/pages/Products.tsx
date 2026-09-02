@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { CirclePlus, PencilLine, Tag, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Check, ChevronRight, Eye, EyeOff, PencilLine, Plus, X } from 'lucide-react'
 import { useAdminData } from '../AdminDataContext'
-import type { Product, ProductVariant } from '../data'
+import type { Product } from '../data'
 import { Drawer, EmptyState, Field, PageHeader, StatusBadge } from '../ui'
 
 interface ProductDraft {
@@ -10,17 +10,13 @@ interface ProductDraft {
   name: string
   description: string
   isActive: boolean
-}
-
-interface VariantDraft {
-  id?: string
-  productId: string
-  color: string
-  size: string
-  sku: string
-  regularPriceCents: number
+  // Product-level matrix fields are carried through so editing the product
+  // (name/category/etc.) never wipes the color/size/SKU/pricing definition.
+  skuPrefix: string
+  colors: string[]
+  sizes: string[]
   costPriceCents: number
-  isActive: boolean
+  regularPriceCents: number
 }
 
 const emptyProductDraft = (categoryId: string): ProductDraft => ({
@@ -28,16 +24,11 @@ const emptyProductDraft = (categoryId: string): ProductDraft => ({
   name: '',
   description: '',
   isActive: true,
-})
-
-const emptyVariantDraft = (productId: string): VariantDraft => ({
-  productId,
-  color: '',
-  size: '',
-  sku: '',
-  regularPriceCents: 250000,
-  costPriceCents: 150000,
-  isActive: true,
+  skuPrefix: '',
+  colors: [],
+  sizes: [],
+  costPriceCents: 0,
+  regularPriceCents: 0,
 })
 
 const formatPeso = (value: number) =>
@@ -47,36 +38,60 @@ const formatPeso = (value: number) =>
     maximumFractionDigits: 0,
   }).format(value / 100)
 
-// A variant at or below this many in-stock units is flagged as low.
-const LOW_STOCK_THRESHOLD = 3
+// SKU = [SKU_PREFIX]-[first 3 letters of color]-[SIZE], e.g. LUNA-IVO-L.
+const buildSku = (prefix: string, color: string, size: string) =>
+  `${prefix.trim().toUpperCase()}-${color.trim().toUpperCase().slice(0, 3)}-${size.trim().toUpperCase()}`
 
 export default function Products() {
-  const { state, upsertCategory, deleteCategory, upsertProduct, upsertVariant, toggleProductActive, bulkToggleProductActive, toggleVariantActive } = useAdminData()
+  const { state, upsertCategory, deleteCategory, upsertProduct, toggleProductActive, bulkToggleProductActive, applyIntake } = useAdminData()
   const [search, setSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [selectedProductId, setSelectedProductId] = useState<string | null>(state.products[0]?.id ?? null)
   const [bulkMode, setBulkMode] = useState(false)
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
   const [productModalOpen, setProductModalOpen] = useState(false)
-  const [variantModalOpen, setVariantModalOpen] = useState(false)
   const [categoryModalOpen, setCategoryModalOpen] = useState(false)
   const [categoryDraft, setCategoryDraft] = useState({ id: '', name: '' })
+  const [productDraft, setProductDraft] = useState<ProductDraft>(() => emptyProductDraft(state.categories[0]?.id ?? ''))
   const [detailFocused, setDetailFocused] = useState(false)
   const detailPanelRef = useRef<HTMLElement>(null)
   const detailHeadingRef = useRef<HTMLHeadingElement>(null)
-  const [productDraft, setProductDraft] = useState<ProductDraft>(() => emptyProductDraft(state.categories[0]?.id ?? ''))
-  const [variantDraft, setVariantDraft] = useState<VariantDraft>(() => emptyVariantDraft(state.products[0]?.id ?? ''))
+
+  // Selected color + size drive the SKU and stock shown in the detail panel.
+  const [selectedColor, setSelectedColor] = useState<string | null>(null)
+  const [selectedSize, setSelectedSize] = useState<string | null>(null)
+
+  // Matrix edit-mode draft (colors/sizes/sku prefix/cost/selling price).
+  const [editMode, setEditMode] = useState(false)
+  const [editColors, setEditColors] = useState<string[]>([])
+  const [editSizes, setEditSizes] = useState<string[]>([])
+  const [editSkuPrefix, setEditSkuPrefix] = useState('')
+  const [editCostCents, setEditCostCents] = useState(0)
+  const [editSellCents, setEditSellCents] = useState(0)
+  const [newColor, setNewColor] = useState('')
+  const [newSize, setNewSize] = useState('')
+
+  // Add-stock modal.
+  const [stockOpen, setStockOpen] = useState(false)
+  const [stockQty, setStockQty] = useState(1)
+  const [stockStoreId, setStockStoreId] = useState(state.stores[0]?.id ?? '')
+
+  const categoryName = (categoryId: string) =>
+    state.categories.find((category) => category.id === categoryId)?.name ?? 'Unassigned'
 
   const visibleProducts = useMemo(
     () =>
       state.products.filter((product) => {
+        if (categoryFilter !== 'all' && product.categoryId !== categoryFilter) {
+          return false
+        }
         if (!search.trim()) {
           return true
         }
-
         const haystack = `${product.name} ${product.description}`.toLowerCase()
         return haystack.includes(search.trim().toLowerCase())
       }),
-    [search, state.products],
+    [search, categoryFilter, state.products],
   )
 
   useEffect(() => {
@@ -94,30 +109,43 @@ export default function Products() {
     [selectedProductId, state.products],
   )
 
-  const selectedVariants = useMemo(
-    () =>
-      selectedProduct
-        ? state.productVariants.filter((variant) => variant.productId === selectedProduct.id)
-        : [],
-    [selectedProduct, state.productVariants],
-  )
+  // When the selected product changes (and when leaving edit mode) reset the
+  // per-product selection + edit drafts to match the product.
+  useEffect(() => {
+    if (!selectedProduct) {
+      setEditMode(false)
+      return
+    }
+    setSelectedColor((previous) => (previous && selectedProduct.colors.includes(previous) ? previous : (selectedProduct.colors[0] ?? null)))
+    setSelectedSize((previous) => (previous && selectedProduct.sizes.includes(previous) ? previous : (selectedProduct.sizes[0] ?? null)))
+    setEditColors(selectedProduct.colors)
+    setEditSizes(selectedProduct.sizes)
+    setEditSkuPrefix(selectedProduct.skuPrefix)
+    setEditCostCents(selectedProduct.costPriceCents)
+    setEditSellCents(selectedProduct.regularPriceCents)
+    setStockStoreId((previous) => (state.stores.some((store) => store.id === previous) ? previous : (state.stores[0]?.id ?? '')))
+    setStockQty(1)
+  }, [selectedProduct, state.stores])
 
-  const variantStock = useMemo(
-    () =>
-      selectedVariants.map((variant) => {
-        const units = state.inventoryUnits.filter((unit) => unit.variantId === variant.id)
-        const inStock = units.filter((unit) => unit.status === 'in_stock').length
-        return { variant, inStock }
-      }),
-    [selectedVariants, state.inventoryUnits],
-  )
+  const selectedVariant = useMemo(() => {
+    if (!selectedProduct || !selectedColor || !selectedSize) {
+      return null
+    }
+    return (
+      state.productVariants.find(
+        (variant) => variant.productId === selectedProduct.id && variant.color === selectedColor && variant.size === selectedSize,
+      ) ?? null
+    )
+  }, [selectedProduct, selectedColor, selectedSize, state.productVariants])
 
-  const stockTotals = useMemo(() => {
-    const totalInStock = variantStock.reduce((sum, item) => sum + item.inStock, 0)
-    const lowCount = variantStock.filter((item) => item.variant.isActive && item.inStock > 0 && item.inStock <= LOW_STOCK_THRESHOLD).length
-    const outCount = variantStock.filter((item) => item.variant.isActive && item.inStock === 0).length
-    return { totalInStock, lowCount, outCount }
-  }, [variantStock])
+  const displaySku =
+    selectedProduct && selectedColor && selectedSize
+      ? selectedVariant?.sku || buildSku(selectedProduct.skuPrefix, selectedColor, selectedSize)
+      : ''
+
+  const selectedInStock = selectedVariant
+    ? state.inventoryUnits.filter((unit) => unit.variantId === selectedVariant.id && unit.status === 'in_stock').length
+    : 0
 
   const openProductModal = (product?: Product) => {
     if (product) {
@@ -127,6 +155,11 @@ export default function Products() {
         name: product.name,
         description: product.description,
         isActive: product.isActive,
+        skuPrefix: product.skuPrefix,
+        colors: product.colors,
+        sizes: product.sizes,
+        costPriceCents: product.costPriceCents,
+        regularPriceCents: product.regularPriceCents,
       })
     } else {
       setProductDraft(emptyProductDraft(state.categories[0]?.id ?? ''))
@@ -135,6 +168,7 @@ export default function Products() {
   }
 
   const selectProduct = (productId: string) => {
+    setEditMode(false)
     setSelectedProductId(productId)
     window.requestAnimationFrame(() => {
       detailPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -153,7 +187,6 @@ export default function Products() {
     if (!categoryDraft.name.trim()) {
       return
     }
-
     upsertCategory({ id: categoryDraft.id || undefined, name: categoryDraft.name })
     setCategoryDraft({ id: '', name: '' })
   }
@@ -181,24 +214,6 @@ export default function Products() {
     }
   }
 
-  const openVariantModal = (variant?: ProductVariant) => {
-    if (variant) {
-      setVariantDraft({
-        id: variant.id,
-        productId: variant.productId,
-        color: variant.color,
-        size: variant.size,
-        sku: variant.sku,
-        regularPriceCents: variant.regularPriceCents,
-        costPriceCents: variant.costPriceCents,
-        isActive: variant.isActive,
-      })
-    } else if (selectedProduct) {
-      setVariantDraft(emptyVariantDraft(selectedProduct.id))
-    }
-    setVariantModalOpen(true)
-  }
-
   const handleSaveProduct = () => {
     if (!productDraft.name.trim() || !productDraft.categoryId) {
       return
@@ -210,32 +225,16 @@ export default function Products() {
       name: productDraft.name,
       description: productDraft.description,
       isActive: productDraft.isActive,
+      skuPrefix: productDraft.skuPrefix,
+      colors: productDraft.colors,
+      sizes: productDraft.sizes,
+      costPriceCents: productDraft.costPriceCents,
+      regularPriceCents: productDraft.regularPriceCents,
       createdAt: productDraft.id
         ? state.products.find((product) => product.id === productDraft.id)?.createdAt ?? new Date().toISOString()
         : new Date().toISOString(),
     })
     setProductModalOpen(false)
-  }
-
-  const handleSaveVariant = () => {
-    if (!selectedProduct || !variantDraft.color.trim() || !variantDraft.size.trim() || !variantDraft.sku.trim()) {
-      return
-    }
-
-    upsertVariant({
-      id: variantDraft.id ?? `variant-${Date.now()}`,
-      productId: variantDraft.productId || selectedProduct.id,
-      color: variantDraft.color,
-      size: variantDraft.size,
-      sku: variantDraft.sku,
-      regularPriceCents: variantDraft.regularPriceCents,
-      costPriceCents: variantDraft.costPriceCents,
-      isActive: variantDraft.isActive,
-      createdAt: variantDraft.id
-        ? state.productVariants.find((variant) => variant.id === variantDraft.id)?.createdAt ?? new Date().toISOString()
-        : new Date().toISOString(),
-    })
-    setVariantModalOpen(false)
   }
 
   const handleToggleProduct = (product: Product) => {
@@ -246,6 +245,97 @@ export default function Products() {
     }
   }
 
+  // --- Matrix edit mode ------------------------------------------------
+  const startEdit = () => {
+    if (!selectedProduct) {
+      return
+    }
+    setEditColors(selectedProduct.colors)
+    setEditSizes(selectedProduct.sizes)
+    setEditSkuPrefix(selectedProduct.skuPrefix)
+    setEditCostCents(selectedProduct.costPriceCents)
+    setEditSellCents(selectedProduct.regularPriceCents)
+    setNewColor('')
+    setNewSize('')
+    setEditMode(true)
+  }
+
+  const cancelEdit = () => {
+    if (!selectedProduct) {
+      return
+    }
+    setEditColors(selectedProduct.colors)
+    setEditSizes(selectedProduct.sizes)
+    setEditSkuPrefix(selectedProduct.skuPrefix)
+    setEditCostCents(selectedProduct.costPriceCents)
+    setEditSellCents(selectedProduct.regularPriceCents)
+    setEditMode(false)
+  }
+
+  const saveMatrix = () => {
+    if (!selectedProduct) {
+      return
+    }
+    const colors = editColors.map((color) => color.trim()).filter((color) => color !== '')
+    const sizes = editSizes.map((size) => size.trim()).filter((size) => size !== '')
+    upsertProduct({
+      ...selectedProduct,
+      skuPrefix: editSkuPrefix.trim(),
+      colors,
+      sizes,
+      costPriceCents: editCostCents,
+      regularPriceCents: editSellCents,
+    })
+    setEditMode(false)
+    setSelectedColor((previous) => (previous && colors.includes(previous) ? previous : (colors[0] ?? null)))
+    setSelectedSize((previous) => (previous && sizes.includes(previous) ? previous : (sizes[0] ?? null)))
+  }
+
+  const updateEditValue = (kind: 'colors' | 'sizes', index: number, value: string) => {
+    const setter = kind === 'colors' ? setEditColors : setEditSizes
+    setter((previous) => previous.map((item, i) => (i === index ? value : item)))
+  }
+
+  const removeEditValue = (kind: 'colors' | 'sizes', index: number) => {
+    const setter = kind === 'colors' ? setEditColors : setEditSizes
+    setter((previous) => previous.filter((_, i) => i !== index))
+  }
+
+  const addEditValue = (kind: 'colors' | 'sizes') => {
+    const value = (kind === 'colors' ? newColor : newSize).trim()
+    if (!value) {
+      return
+    }
+    const setter = kind === 'colors' ? setEditColors : setEditSizes
+    setter((previous) => [...previous, value])
+    if (kind === 'colors') {
+      setNewColor('')
+    } else {
+      setNewSize('')
+    }
+  }
+
+  // --- Add stock modal -------------------------------------------------
+  const openStockModal = () => {
+    setStockQty(1)
+    setStockOpen(true)
+  }
+
+  const confirmStock = () => {
+    if (!selectedVariant || !stockStoreId) {
+      return
+    }
+    applyIntake({
+      variantId: selectedVariant.id,
+      storeId: stockStoreId,
+      quantity: stockQty,
+      costPriceCents: selectedProduct?.costPriceCents ?? 0,
+      staffName: 'Admin',
+    })
+    setStockOpen(false)
+  }
+
+  // --- Bulk selection --------------------------------------------------
   const toggleProductSelection = (productId: string) => {
     setSelectedProductIds((previous) =>
       previous.includes(productId) ? previous.filter((id) => id !== productId) : [...previous, productId],
@@ -261,11 +351,9 @@ export default function Products() {
     if (selectedProductIds.length === 0) {
       return
     }
-
     if (!nextActive && !window.confirm(`Deactivate ${selectedProductIds.length} selected product${selectedProductIds.length === 1 ? '' : 's'}?`)) {
       return
     }
-
     bulkToggleProductActive(selectedProductIds, nextActive)
     clearBulkSelection()
   }
@@ -367,89 +455,189 @@ export default function Products() {
             placeholder="Write a short product summary"
           />
         </Field>
+        <Field label="SKU prefix">
+          <input
+            value={productDraft.skuPrefix}
+            onChange={(event) => setProductDraft((previous) => ({ ...previous, skuPrefix: event.target.value }))}
+            className="admin-input"
+            placeholder="E.g. LUNA"
+          />
+        </Field>
       </div>
     </Drawer>
   )
 
-  const variantDrawer = (
+  const matrixEditor = (
+    <div className="matrix-editor">
+      <Field label="SKU code prefix">
+        <input
+          value={editSkuPrefix}
+          onChange={(event) => setEditSkuPrefix(event.target.value)}
+          className="admin-input"
+          placeholder="E.g. LUNA"
+        />
+      </Field>
+
+      <div className="matrix-edit-group">
+        <span className="matrix-label">Colors</span>
+        {editColors.length > 0 ? (
+          <div className="matrix-edit-list">
+            {editColors.map((value, index) => (
+              <div className="matrix-edit-item" key={index}>
+                <input
+                  value={value}
+                  onChange={(event) => updateEditValue('colors', index, event.target.value)}
+                  className="admin-input"
+                  aria-label={`Color ${index + 1}`}
+                />
+                <button type="button" className="mini-icon-btn" onClick={() => removeEditValue('colors', index)} title="Remove color" aria-label="Remove color">
+                  <X size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="form-hint">No colors added yet.</p>
+        )}
+        <div className="matrix-add-item">
+          <input
+            value={newColor}
+            onChange={(event) => setNewColor(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                addEditValue('colors')
+              }
+            }}
+            className="admin-input"
+            placeholder="Add color"
+            aria-label="Add a new color"
+          />
+          <button type="button" className="mini-icon-btn add" onClick={() => addEditValue('colors')} title="Add color" aria-label="Add color">
+            <Plus size={16} />
+          </button>
+        </div>
+      </div>
+
+      <div className="matrix-edit-group">
+        <span className="matrix-label">Sizes</span>
+        {editSizes.length > 0 ? (
+          <div className="matrix-edit-list">
+            {editSizes.map((value, index) => (
+              <div className="matrix-edit-item" key={index}>
+                <input
+                  value={value}
+                  onChange={(event) => updateEditValue('sizes', index, event.target.value)}
+                  className="admin-input"
+                  aria-label={`Size ${index + 1}`}
+                />
+                <button type="button" className="mini-icon-btn" onClick={() => removeEditValue('sizes', index)} title="Remove size" aria-label="Remove size">
+                  <X size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="form-hint">No sizes added yet.</p>
+        )}
+        <div className="matrix-add-item">
+          <input
+            value={newSize}
+            onChange={(event) => setNewSize(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                addEditValue('sizes')
+              }
+            }}
+            className="admin-input"
+            placeholder="Add size"
+            aria-label="Add a new size"
+          />
+          <button type="button" className="mini-icon-btn add" onClick={() => addEditValue('sizes')} title="Add size" aria-label="Add size">
+            <Plus size={16} />
+          </button>
+        </div>
+      </div>
+
+      <div className="matrix-edit-prices">
+        <Field label="Cost price (₱)">
+          <input
+            type="number"
+            min="0"
+            value={editCostCents / 100}
+            onChange={(event) => setEditCostCents(Math.max(0, Math.round(Number(event.target.value || 0) * 100)))}
+            className="admin-input"
+          />
+        </Field>
+        <Field label="Selling price (₱)">
+          <input
+            type="number"
+            min="0"
+            value={editSellCents / 100}
+            onChange={(event) => setEditSellCents(Math.max(0, Math.round(Number(event.target.value || 0) * 100)))}
+            className="admin-input"
+          />
+        </Field>
+      </div>
+      <p className="form-hint">
+        Saving generates one variant (and SKU) for every color × size combination.
+      </p>
+    </div>
+  )
+
+  const stockDrawer = (
     <Drawer
-      open={variantModalOpen}
+      open={stockOpen}
       size="panel"
-      title={variantDraft.id ? 'Edit variant' : 'Add variant'}
-      subtitle="Manage color, size, pricing, and availability."
-      onClose={() => setVariantModalOpen(false)}
+      title="Add stock"
+      subtitle="Receive new pieces for the selected color and size."
+      onClose={() => setStockOpen(false)}
       footer={
         <div className="modal-footer-actions">
-          <button type="button" className="secondary-button" onClick={() => setVariantModalOpen(false)}>
+          <button type="button" className="secondary-button" onClick={() => setStockOpen(false)}>
             Cancel
           </button>
-          <button type="button" className="primary-button" onClick={handleSaveVariant}>
-            Save variant
+          <button type="button" className="primary-button" onClick={confirmStock} disabled={!selectedVariant || !stockStoreId || stockQty < 1}>
+            Confirm
           </button>
         </div>
       }
     >
       <div className="form-grid">
-        <Field label="Color">
-          <input
-            value={variantDraft.color}
-            onChange={(event) => setVariantDraft((previous) => ({ ...previous, color: event.target.value }))}
-            className="admin-input"
-            placeholder="Ivory"
-          />
-        </Field>
-        <Field label="Size">
-          <input
-            value={variantDraft.size}
-            onChange={(event) => setVariantDraft((previous) => ({ ...previous, size: event.target.value }))}
-            className="admin-input"
-            placeholder="M"
-          />
-        </Field>
-        <Field label="SKU">
-          <input
-            value={variantDraft.sku}
-            onChange={(event) => setVariantDraft((previous) => ({ ...previous, sku: event.target.value }))}
-            className="admin-input"
-            placeholder="LUNA-IV-M"
-          />
-        </Field>
-        <Field label="Regular price">
+        <div className="stock-summary-grid">
+          <div className="matrix-stat"><span>Color</span><strong>{selectedColor || '—'}</strong></div>
+          <div className="matrix-stat"><span>Size</span><strong>{selectedSize || '—'}</strong></div>
+          <div className="matrix-stat stock-summary-sku"><span>SKU</span><strong className="sku-mono">{displaySku || '—'}</strong></div>
+        </div>
+        <Field label="Quantity to add">
           <input
             type="number"
-            min="0"
-            value={variantDraft.regularPriceCents / 100}
-            onChange={(event) =>
-              setVariantDraft((previous) => ({
-                ...previous,
-                regularPriceCents: Math.round(Number(event.target.value || 0) * 100),
-              }))
-            }
+            min="1"
+            step="1"
+            value={stockQty}
+            onChange={(event) => setStockQty(Math.max(1, Math.round(Number(event.target.value || 1))))}
             className="admin-input"
           />
         </Field>
-        <Field label="Cost price">
-          <input
-            type="number"
-            min="0"
-            value={variantDraft.costPriceCents / 100}
-            onChange={(event) =>
-              setVariantDraft((previous) => ({
-                ...previous,
-                costPriceCents: Math.round(Number(event.target.value || 0) * 100),
-              }))
-            }
-            className="admin-input"
-          />
+        <Field label="Store / location">
+          {state.stores.length === 0 ? (
+            <p className="form-hint">No stores yet. Add a store before receiving stock.</p>
+          ) : (
+            <select value={stockStoreId} onChange={(event) => setStockStoreId(event.target.value)} className="admin-select">
+              {state.stores.map((store) => (
+                <option key={store.id} value={store.id}>
+                  {store.name} ({store.code})
+                </option>
+              ))}
+            </select>
+          )}
         </Field>
-        <label className="check-row large">
-          <input
-            type="checkbox"
-            checked={variantDraft.isActive}
-            onChange={(event) => setVariantDraft((previous) => ({ ...previous, isActive: event.target.checked }))}
-          />
-          <span>Active variant</span>
-        </label>
+        {!selectedVariant ? (
+          <p className="form-hint">
+            This combination isn’t created yet — save the color/size matrix once to generate its SKU before adding stock.
+          </p>
+        ) : null}
       </div>
     </Drawer>
   )
@@ -470,7 +658,6 @@ export default function Products() {
         />
         {categoryDrawer}
         {productDrawer}
-        {variantDrawer}
       </div>
     )
   }
@@ -479,61 +666,85 @@ export default function Products() {
     <div className="admin-page product-page">
       <PageHeader
         title="Products"
-        subtitle="Product catalog, variant pricing, and active controls."
+        subtitle="Catalog, colors, sizes, and per-location stock."
         actions={
           <div className="inline-actions">
             <button type="button" className="secondary-button" onClick={() => openCategoryModal()}>
               Manage categories
             </button>
-            <div className="bulk-toolbar">
-              {!bulkMode ? (
-                <button type="button" className="secondary-button bulk-mode-toggle" onClick={() => setBulkMode(true)} aria-label="Select products for bulk activation or deactivation">
-                  Select
-                </button>
-              ) : (
-                <button type="button" className="secondary-button bulk-mode-toggle" onClick={clearBulkSelection} aria-label="Done bulk product selection">
-                  Done
-                </button>
-              )}
-            </div>
             <button type="button" className="primary-button" onClick={() => openProductModal()} aria-label="Add a new product">
-              <CirclePlus size={16} />
+              <Plus size={16} />
               Add product
             </button>
           </div>
         }
       />
 
-      {bulkMode ? (
-        <div className="bulk-selection-bar" role="toolbar" aria-label="Bulk product actions">
-          <span className="selection-count">{selectedProductIds.length} selected</span>
-          <button type="button" className="primary-button bulk-action-button" onClick={() => applyBulkProductState(true)} aria-label="Activate selected products" disabled={selectedProductIds.length === 0}>
-            Activate
-          </button>
-          <button type="button" className="secondary-button bulk-action-button" onClick={() => applyBulkProductState(false)} aria-label="Deactivate selected products" disabled={selectedProductIds.length === 0}>
-            Deactivate
-          </button>
-          <button type="button" className="secondary-button bulk-action-button" onClick={() => setSelectedProductIds([])} aria-label="Clear product selections">
-            Clear
-          </button>
-        </div>
-      ) : null}
-
-      <div className="two-column-layout">
-        <section className="admin-panel">
-          <div className="panel-header-row">
-            <h3>Catalog</h3>
-            <div className="search-box small">
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search products"
-                aria-label="Search products"
-              />
-            </div>
+      <div className="two-column-layout product-master-detail">
+        {/* ---------------- Catalogue (≈40%) ---------------- */}
+        <section className="admin-panel product-catalogue">
+          <div className="catalogue-head">
+            <h3>Catalogue</h3>
+            <button
+              type="button"
+              className="secondary-button catalogue-select"
+              onClick={() => (bulkMode ? clearBulkSelection() : setBulkMode(true))}
+              aria-pressed={bulkMode}
+            >
+              {bulkMode ? 'Done' : 'Select'}
+            </button>
           </div>
 
-          <div className="record-stack">
+          <div className="search-box small catalogue-search">
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search products"
+              aria-label="Search products"
+            />
+          </div>
+
+          <div className="catalogue-controls">
+            <div className="chip-scroll catalogue-cat-row">
+              <button
+                type="button"
+                className={`option-chip ${categoryFilter === 'all' ? 'active' : ''}`}
+                onClick={() => setCategoryFilter('all')}
+              >
+                All
+              </button>
+              {state.categories.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  className={`option-chip ${categoryFilter === category.id ? 'active' : ''}`}
+                  onClick={() => setCategoryFilter(category.id)}
+                >
+                  {category.name}
+                </button>
+              ))}
+            </div>
+            <button type="button" className="mini-icon-btn catalogue-add" onClick={() => openProductModal()} title="Add product" aria-label="Add product">
+              <Plus size={18} />
+            </button>
+          </div>
+
+          {bulkMode ? (
+            <div className="bulk-selection-bar" role="toolbar" aria-label="Bulk product actions">
+              <span className="selection-count">{selectedProductIds.length} selected</span>
+              <button type="button" className="primary-button bulk-action-button" onClick={() => applyBulkProductState(true)} aria-label="Activate selected products" disabled={selectedProductIds.length === 0}>
+                Activate
+              </button>
+              <button type="button" className="secondary-button bulk-action-button" onClick={() => applyBulkProductState(false)} aria-label="Deactivate selected products" disabled={selectedProductIds.length === 0}>
+                Deactivate
+              </button>
+              <button type="button" className="secondary-button bulk-action-button" onClick={() => setSelectedProductIds([])} aria-label="Clear product selections">
+                Clear
+              </button>
+            </div>
+          ) : null}
+
+          <div className="record-stack catalogue-list">
             {visibleProducts.length > 0 ? (
               visibleProducts.map((product) => {
                 const isSelected = selectedProductIds.includes(product.id)
@@ -543,7 +754,7 @@ export default function Products() {
                     role={bulkMode ? 'checkbox' : 'button'}
                     tabIndex={0}
                     aria-checked={bulkMode ? isSelected : undefined}
-                    className={`record-card ${selectedProduct?.id === product.id ? 'selected' : ''} ${bulkMode && isSelected ? 'bulk-selected' : ''}`}
+                    className={`record-card catalogue-item ${selectedProduct?.id === product.id ? 'selected' : ''} ${bulkMode && isSelected ? 'bulk-selected' : ''}`}
                     onClick={() => {
                       if (bulkMode) {
                         toggleProductSelection(product.id)
@@ -567,118 +778,143 @@ export default function Products() {
                         {isSelected ? '✓' : ''}
                       </span>
                     ) : null}
-                    <div className="record-main">
-                      <strong>{product.name}</strong>
-                      <small>{state.categories.find((category) => category.id === product.categoryId)?.name ?? 'No category'}</small>
+                    <div className="catalogue-item-main">
+                      <strong className="catalogue-item-name">{product.name}</strong>
+                      <span className="status-pill catalogue-item-cat">{categoryName(product.categoryId)}</span>
                     </div>
-                    <div className="record-side">
-                      <StatusBadge label={product.isActive ? 'Active' : 'Inactive'} tone={product.isActive ? 'success' : 'neutral'} />
-                      <span>{state.productVariants.filter((variant) => variant.productId === product.id).length} variants</span>
-                    </div>
+                    {!bulkMode ? <ChevronRight className="catalogue-chevron" size={18} /> : null}
                   </div>
                 )
               })
             ) : (
-              <EmptyState title="No matches" description="Adjust the search to find the catalog item you need." />
+              <EmptyState title="No matches" description="Adjust the search or filters to find the item you need." />
             )}
           </div>
         </section>
 
-        <section ref={detailPanelRef} className={`admin-panel detail-panel ${detailFocused ? 'detail-focused' : ''}`}>
+        {/* ---------------- Product details (≈60%) ---------------- */}
+        <section ref={detailPanelRef} className={`admin-panel detail-panel product-details ${detailFocused ? 'detail-focused' : ''}`}>
           {selectedProduct ? (
             <>
-          <div className="panel-header-row detail-header">
-            <div>
-              <span className="detail-overline">Product details</span>
-              <h3 ref={detailHeadingRef} tabIndex={-1}>{selectedProduct.name}</h3>
-              <small>{selectedProduct.description || 'No description provided.'}</small>
-            </div>
-            <div className="inline-actions">
-              <button type="button" className="secondary-button" onClick={() => openProductModal(selectedProduct)}>
-                <PencilLine size={16} />
-                Edit
-              </button>
-              <button type="button" className="secondary-button" onClick={() => handleToggleProduct(selectedProduct)}>
-                {selectedProduct.isActive ? <ToggleLeft size={16} /> : <ToggleRight size={16} />}
-                {selectedProduct.isActive ? 'Deactivate' : 'Activate'}
-              </button>
-            </div>
-          </div>
-
-          <div className="detail-section">
-            <h4>Catalog information</h4>
-            <div className="detail-meta-strip">
-              <div>
-                <span>Category</span>
-                <strong>{state.categories.find((category) => category.id === selectedProduct.categoryId)?.name ?? 'Unassigned'}</strong>
-              </div>
-              <div>
-                <span>Availability</span>
-                <strong>{selectedProduct.isActive ? 'Active' : 'Inactive'}</strong>
-              </div>
-              <div>
-                <span>Variants</span>
-                <strong>{selectedVariants.length}</strong>
-              </div>
-              <div>
-                <span>In stock</span>
-                <div className="detail-stock-value">
-                  <strong>{stockTotals.totalInStock}</strong>
-                  {stockTotals.lowCount > 0 ? <span className="stock-flag low">{stockTotals.lowCount} low</span> : null}
-                  {stockTotals.outCount > 0 ? <span className="stock-flag out">{stockTotals.outCount} out</span> : null}
+              <div className="panel-header-row detail-header product-detail-head">
+                <div className="detail-title-block">
+                  <span className="detail-overline">Product details</span>
+                  <h3 ref={detailHeadingRef} tabIndex={-1}>{selectedProduct.name}</h3>
+                  <div className="product-tag-row">
+                    <span className="status-pill">{categoryName(selectedProduct.categoryId)}</span>
+                    <StatusBadge label={selectedProduct.isActive ? 'Active' : 'Inactive'} tone={selectedProduct.isActive ? 'success' : 'neutral'} />
+                  </div>
+                  <p className="product-description">{selectedProduct.description || 'No description provided.'}</p>
+                </div>
+                <div className="detail-head-tools">
+                  <button type="button" className="mini-icon-btn" onClick={() => openProductModal(selectedProduct)} title="Edit product" aria-label="Edit product">
+                    <PencilLine size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    className="mini-icon-btn"
+                    onClick={() => handleToggleProduct(selectedProduct)}
+                    title={selectedProduct.isActive ? 'Deactivate product' : 'Activate product'}
+                    aria-label={selectedProduct.isActive ? 'Deactivate product' : 'Activate product'}
+                  >
+                    {selectedProduct.isActive ? <Eye size={16} /> : <EyeOff size={16} />}
+                  </button>
                 </div>
               </div>
-            </div>
-          </div>
 
-          <div className="detail-section">
-            <div className="section-actions">
-              <div>
-                <h4>Variants and stock</h4>
-                <small>Pricing and current in-stock count by variant.</small>
-              </div>
-              <button type="button" className="primary-button" onClick={() => openVariantModal()}>
-                <Tag size={16} />
-                Add variant
-              </button>
-            </div>
-
-          <div className="variant-table">
-            <div className="variant-table-head" role="row">
-              <span role="columnheader">Variant</span>
-              <span role="columnheader">Price</span>
-              <span role="columnheader">Stock</span>
-              <span role="columnheader">Status</span>
-              <span role="columnheader" className="variant-table-actions">Actions</span>
-            </div>
-            {selectedVariants.length > 0 ? (
-              variantStock.map(({ variant, inStock }) => {
-                const stockTone = variant.isActive && inStock === 0 ? 'out' : variant.isActive && inStock <= LOW_STOCK_THRESHOLD ? 'low' : ''
-                return (
-                  <div key={variant.id} className="variant-table-row" role="row">
-                    <span role="cell" className="variant-name">
-                      <strong>{variant.color} {variant.size}</strong>
-                      <small>{variant.sku}</small>
-                    </span>
-                    <span role="cell" className="variant-price">{formatPeso(variant.regularPriceCents)}</span>
-                    <span role="cell" className={`variant-stock ${stockTone}`}>{inStock}</span>
-                    <span role="cell" className="variant-status"><StatusBadge label={variant.isActive ? 'Active' : 'Inactive'} tone={variant.isActive ? 'success' : 'neutral'} /></span>
-                    <span role="cell" className="variant-table-actions">
-                      <button type="button" className="row-icon-button" onClick={() => openVariantModal(variant)} aria-label={`Edit ${variant.color} ${variant.size}`} title="Edit variant">
-                        <PencilLine size={16} />
-                      </button>
-                      <button type="button" className="row-icon-button" onClick={() => toggleVariantActive(variant.id)} aria-label={`${variant.isActive ? 'Disable' : 'Enable'} ${variant.color} ${variant.size}`} title={variant.isActive ? 'Disable variant' : 'Enable variant'}>
-                        {variant.isActive ? <ToggleLeft size={18} /> : <ToggleRight size={18} />}
-                      </button>
-                    </span>
+              <div className="detail-section">
+                <div className="section-actions">
+                  <div>
+                    <h4>Variants and stock</h4>
+                    <small>{editMode ? 'Editing color, size, SKU and pricing options.' : 'Pick a color and size to see its SKU and stock.'}</small>
                   </div>
-                )
-              })
-            ) : (
-              <EmptyState title="No variants yet" description="Add the first option for this product." />
-            )}
-          </div>
-          </div>
+                  {editMode ? (
+                    <div className="inline-actions">
+                      <button type="button" className="secondary-button" onClick={cancelEdit}>Cancel</button>
+                      <button type="button" className="primary-button" onClick={saveMatrix}>
+                        <Check size={16} />
+                        Save
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" className="secondary-button matrix-edit-toggle" onClick={startEdit}>
+                      <PencilLine size={14} />
+                      Edit
+                    </button>
+                  )}
+                </div>
+
+                {editMode ? (
+                  matrixEditor
+                ) : (
+                  <>
+                    <div className="matrix-block">
+                      <span className="matrix-label">Color</span>
+                      {selectedProduct.colors.length > 0 ? (
+                        <div className="matrix-options">
+                          {selectedProduct.colors.map((color) => (
+                            <button
+                              key={color}
+                              type="button"
+                              className={`option-chip ${selectedColor === color ? 'active' : ''}`}
+                              onClick={() => setSelectedColor(color)}
+                            >
+                              {color}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="form-hint">No colors yet. Press Edit to add color and size options.</p>
+                      )}
+                    </div>
+
+                    <div className="matrix-block">
+                      <span className="matrix-label">Size</span>
+                      {selectedProduct.sizes.length > 0 ? (
+                        <div className="matrix-options">
+                          {selectedProduct.sizes.map((size) => (
+                            <button
+                              key={size}
+                              type="button"
+                              className={`option-chip ${selectedSize === size ? 'active' : ''}`}
+                              onClick={() => setSelectedSize(size)}
+                            >
+                              {size}
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="form-hint">No sizes yet. Press Edit to add size options.</p>
+                      )}
+                    </div>
+
+                    <div className="matrix-stats">
+                      <div className="matrix-stat"><span>Cost price</span><strong>{formatPeso(selectedProduct.costPriceCents)}</strong></div>
+                      <div className="matrix-stat"><span>Regular selling price</span><strong>{formatPeso(selectedProduct.regularPriceCents)}</strong></div>
+                    </div>
+
+                    <div className="matrix-current">
+                      <div className="matrix-current-sku">
+                        <span>SKU</span>
+                        <strong className="sku-mono">{displaySku || '—'}</strong>
+                      </div>
+                      <div className="matrix-current-stock">
+                        <span>In stock</span>
+                        <strong>{selectedInStock}</strong>
+                      </div>
+                    </div>
+
+                    {selectedColor && selectedSize && !selectedVariant ? (
+                      <p className="form-hint">This combination isn’t created yet — open Edit and save once to generate its SKU.</p>
+                    ) : null}
+
+                    <button type="button" className="primary-button add-stock-button" onClick={openStockModal} disabled={!selectedVariant}>
+                      <Plus size={16} />
+                      Add stock
+                    </button>
+                  </>
+                )}
+              </div>
             </>
           ) : (
             <EmptyState title="No product selected" description="Add a product or choose one from the catalog to manage its details." />
@@ -687,10 +923,8 @@ export default function Products() {
       </div>
 
       {categoryDrawer}
-
       {productDrawer}
-
-      {variantDrawer}
+      {stockDrawer}
     </div>
   )
 }
