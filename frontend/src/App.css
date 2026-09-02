@@ -1339,6 +1339,14 @@
   color: #fff;
 }
 
+.option-chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+  background: var(--surface);
+  border-color: var(--border-beige);
+  color: var(--taupe-dark);
+}
+
 .stock-note {
   font-size: 12px;
   color: var(--ink-soft);

@@ -124,8 +124,9 @@ export default function SalesTrendChart({
   const activeStoreName = active ? series.find((s) => s.store.id === active.storeId)?.store.name : ''
   const tooltipX = active ? xFor(active.index) : 0
   const tooltipY = active ? yFor(active.amount) : 0
-  const tipW = 172
-  const tipH = 60
+  const tipW = 200
+  const tipH = 66
+  const title = activeStoreName.length > 24 ? `${activeStoreName.slice(0, 23)}…` : activeStoreName
 
   return (
     <div className="sales-trend-chart">
@@ -195,12 +196,12 @@ export default function SalesTrendChart({
           >
             <rect width={tipW} height={tipH} rx={9} className="chart-tooltip-bg" />
             <text x={12} y={22} className="chart-tooltip-title">
-              {activeStoreName}
+              {title}
             </text>
-            <text x={12} y={42} className="chart-tooltip-sub">
+            <text x={12} y={45} className="chart-tooltip-sub">
               {active.label}
             </text>
-            <text x={tipW - 12} y={22} textAnchor="end" className="chart-tooltip-amount">
+            <text x={tipW - 12} y={45} textAnchor="end" className="chart-tooltip-amount">
               {formatPeso(active.amount)}
             </text>
           </g>
