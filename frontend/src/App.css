@@ -4473,16 +4473,43 @@
   margin-bottom: 0;
 }
 
-/* ---- Add-stock modal summary ---- */
-.stock-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 6px;
+/* ---- Add-stock modal ---- */
+.stock-modal .admin-input,
+.stock-modal .admin-select {
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.stock-summary-sku {
-  grid-column: 1 / -1;
+.stock-matrix-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.stock-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 5px 14px;
+  border: 1px solid var(--border-beige);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--ink-dark);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.stock-chip.stock-sku {
+  border-style: dashed;
+  background: var(--surface);
+  color: var(--taupe-dark);
+}
+
+.stock-footer .stock-confirm {
+  flex: 1 1 auto;
+  justify-content: center;
 }
 
 @media (max-width: 1000px) {
@@ -4509,5 +4536,28 @@
     width: 100%;
     text-align: left;
   }
+}
+
+/* Inactive products appear dimmed in the catalogue list. */
+.catalogue-item.inactive {
+  opacity: 0.5;
+}
+
+.catalogue-item.inactive .catalogue-item-name {
+  color: var(--ink-soft);
+}
+
+/* Compact, right-aligned matrix Edit button in the Variants and stock row. */
+.product-details .section-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.matrix-edit-toggle {
+  min-height: 30px;
+  padding: 5px 11px;
+  font-size: 12.5px;
 }
 

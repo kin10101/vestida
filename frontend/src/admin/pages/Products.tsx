@@ -2,7 +2,7 @@
 import { Check, ChevronRight, Eye, EyeOff, PencilLine, Plus, X } from 'lucide-react'
 import { useAdminData } from '../AdminDataContext'
 import type { Product } from '../data'
-import { Drawer, EmptyState, Field, PageHeader, StatusBadge } from '../ui'
+import { Drawer, EmptyState, Field, PageHeader, StatusBadge, Toast } from '../ui'
 
 interface ProductDraft {
   id?: string
@@ -75,6 +75,17 @@ export default function Products() {
   const [stockOpen, setStockOpen] = useState(false)
   const [stockQty, setStockQty] = useState(1)
   const [stockStoreId, setStockStoreId] = useState(state.stores[0]?.id ?? '')
+
+  // Success toast shown after stock is added.
+  const [toast, setToast] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!toast) {
+      return
+    }
+    const timer = window.setTimeout(() => setToast(null), 3400)
+    return () => window.clearTimeout(timer)
+  }, [toast])
 
   const categoryName = (categoryId: string) =>
     state.categories.find((category) => category.id === categoryId)?.name ?? 'Unassigned'
@@ -325,14 +336,17 @@ export default function Products() {
     if (!selectedVariant || !stockStoreId) {
       return
     }
+    const qty = stockQty
+    const store = state.stores.find((item) => item.id === stockStoreId)
     applyIntake({
       variantId: selectedVariant.id,
       storeId: stockStoreId,
-      quantity: stockQty,
+      quantity: qty,
       costPriceCents: selectedProduct?.costPriceCents ?? 0,
       staffName: 'Admin',
     })
     setStockOpen(false)
+    setToast(`Added ${qty} unit${qty === 1 ? '' : 's'} of ${displaySku || 'this item'} to ${store?.name ?? 'store'}`)
   }
 
   // --- Bulk selection --------------------------------------------------
@@ -591,25 +605,26 @@ export default function Products() {
       open={stockOpen}
       size="panel"
       title="Add stock"
-      subtitle="Receive new pieces for the selected color and size."
+      subtitle="Receive new pieces for the selected size."
       onClose={() => setStockOpen(false)}
       footer={
-        <div className="modal-footer-actions">
+        <div className="modal-footer-actions stock-footer">
           <button type="button" className="secondary-button" onClick={() => setStockOpen(false)}>
             Cancel
           </button>
-          <button type="button" className="primary-button" onClick={confirmStock} disabled={!selectedVariant || !stockStoreId || stockQty < 1}>
-            Confirm
+          <button type="button" className="primary-button stock-confirm" onClick={confirmStock} disabled={!selectedVariant || !stockStoreId || stockQty < 1}>
+            Add {stockQty} unit{stockQty === 1 ? '' : 's'}
           </button>
         </div>
       }
     >
-      <div className="form-grid">
-        <div className="stock-summary-grid">
-          <div className="matrix-stat"><span>Color</span><strong>{selectedColor || '—'}</strong></div>
-          <div className="matrix-stat"><span>Size</span><strong>{selectedSize || '—'}</strong></div>
-          <div className="matrix-stat stock-summary-sku"><span>SKU</span><strong className="sku-mono">{displaySku || '—'}</strong></div>
+      <div className="stock-modal">
+        <div className="stock-matrix-summary" aria-label="Receiving">
+          <span className="stock-chip">{selectedColor || '—'}</span>
+          <span className="stock-chip">{selectedSize || '—'}</span>
+          <span className="stock-chip stock-sku"><span className="sku-mono">{displaySku || '—'}</span></span>
         </div>
+
         <Field label="Quantity to add">
           <input
             type="number"
@@ -620,6 +635,7 @@ export default function Products() {
             className="admin-input"
           />
         </Field>
+
         <Field label="Store / location">
           {state.stores.length === 0 ? (
             <p className="form-hint">No stores yet. Add a store before receiving stock.</p>
@@ -633,6 +649,7 @@ export default function Products() {
             </select>
           )}
         </Field>
+
         {!selectedVariant ? (
           <p className="form-hint">
             This combination isn’t created yet — save the color/size matrix once to generate its SKU before adding stock.
@@ -724,7 +741,7 @@ export default function Products() {
                 </button>
               ))}
             </div>
-            <button type="button" className="mini-icon-btn catalogue-add" onClick={() => openProductModal()} title="Add product" aria-label="Add product">
+            <button type="button" className="mini-icon-btn catalogue-add" onClick={() => openCategoryModal()} title="Add category" aria-label="Add category">
               <Plus size={18} />
             </button>
           </div>
@@ -754,7 +771,7 @@ export default function Products() {
                     role={bulkMode ? 'checkbox' : 'button'}
                     tabIndex={0}
                     aria-checked={bulkMode ? isSelected : undefined}
-                    className={`record-card catalogue-item ${selectedProduct?.id === product.id ? 'selected' : ''} ${bulkMode && isSelected ? 'bulk-selected' : ''}`}
+                    className={`record-card catalogue-item ${product.isActive ? '' : 'inactive'} ${selectedProduct?.id === product.id ? 'selected' : ''} ${bulkMode && isSelected ? 'bulk-selected' : ''}`}
                     onClick={() => {
                       if (bulkMode) {
                         toggleProductSelection(product.id)
@@ -925,6 +942,7 @@ export default function Products() {
       {categoryDrawer}
       {productDrawer}
       {stockDrawer}
+      {toast ? <Toast message={toast} onClose={() => setToast(null)} /> : null}
     </div>
   )
 }
