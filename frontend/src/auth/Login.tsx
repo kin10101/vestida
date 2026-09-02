@@ -5,7 +5,7 @@ import { useAuth } from './AuthContext'
 
 export default function Login() {
   const { user, loading, signIn } = useAuth()
-  const [email, setEmail] = useState('')
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -19,7 +19,7 @@ export default function Login() {
     event.preventDefault()
     setError(null)
     setSubmitting(true)
-    const result = await signIn(email, password)
+    const result = await signIn(identifier, password)
     setSubmitting(false)
     if (result.error) {
       setError(result.error)
@@ -33,14 +33,14 @@ export default function Login() {
         <h1>VESTIDA</h1>
         <p className="brand-mark">Store sign-in</p>
 
-        <label htmlFor="login-email">Email</label>
+        <label htmlFor="login-identifier">Email or display name</label>
         <input
-          id="login-email"
-          type="email"
-          placeholder="you@vestida.ph"
-          value={email}
-          autoComplete="email"
-          onChange={(event) => setEmail(event.target.value)}
+          id="login-identifier"
+          type="text"
+          placeholder="you@vestida.ph or Alyssa"
+          value={identifier}
+          autoComplete="username"
+          onChange={(event) => setIdentifier(event.target.value)}
         />
 
         <label htmlFor="login-password">Password</label>
@@ -60,7 +60,7 @@ export default function Login() {
         </button>
 
         <p className="login-hint">
-          Sign in with your Supabase Auth account to open the store.
+          Sign in with your email or display name to open the app.
         </p>
       </form>
     </div>

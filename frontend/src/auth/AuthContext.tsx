@@ -11,7 +11,7 @@ import type { CurrentUser } from './currentUser'
 interface AuthState {
   user: CurrentUser | null
   loading: boolean
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>
+  signIn: (identifier: string, password: string) => Promise<{ error: string | null }>
   signOut: () => Promise<void>
 }
 
@@ -61,7 +61,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  async function signIn(email: string, password: string) {
+  async function signIn(identifier: string, password: string) {
+    let email = identifier.trim()
+    // The single login field accepts either an email or a display name. If the
+    // value is not an email, resolve the display name to its linked account's
+    // email (via resolve_login_identifier) before signing in.
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      const { data } = await supabase.rpc('resolve_login_identifier', { p_identifier: identifier })
+      const resolved = (data as { email?: string | null } | null)?.email
+      if (resolved) email = resolved
+    }
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,

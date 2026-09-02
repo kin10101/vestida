@@ -3688,6 +3688,38 @@
   min-height: 44px;
 }
 
+/* Single-column modal form (Add location / Add staff / Add account). */
+.form-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.readonly-field {
+  color: var(--ink-soft);
+  background: var(--taupe-tint);
+  cursor: default;
+}
+
+.form-note {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--taupe-tint);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.form-empty-hint {
+  padding: 12px;
+  border: 1px dashed var(--border-beige);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
 .admin-textarea {
   width: 100%;
   min-height: 100px;

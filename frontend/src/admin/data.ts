@@ -95,6 +95,25 @@ export interface StoreAccess {
   devices: ConnectedDevice[]
 }
 
+export type AccountRole = 'admin' | 'staff'
+
+/**
+ * A login account = a Supabase Auth user (email/password) plus its linked
+ * staff profile (display name, role, store). Email and password are managed
+ * in Supabase Auth; the admin UI configures only the profile/access fields.
+ */
+export interface Account {
+  authId: string
+  email: string
+  emailConfirmed: boolean
+  createdAt: string
+  staffId: string | null
+  displayName: string
+  role: AccountRole | '' // '' => Auth user exists but has no staff profile yet
+  storeId: string | null
+  isActive: boolean
+}
+
 export interface OrderLineItem {
   id: string
   orderId: string

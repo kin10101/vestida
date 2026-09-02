@@ -1,37 +1,78 @@
-﻿import { useMemo, useState } from 'react'
-import { Plus, UserRoundCog } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { KeyRound, Plus, UserRoundCog } from 'lucide-react'
 import { useAdminData } from '../AdminDataContext'
+import type { Account } from '../data'
 import { Drawer, EmptyState, Field, PageHeader, StatusBadge } from '../ui'
 
-const tabs = ['locations', 'staff', 'access'] as const
+const tabs = ['locations', 'staff', 'accounts'] as const
 type StoreTab = (typeof tabs)[number]
 
 type StoreDraft = { id: string; code: string; name: string; isActive: boolean }
+type StaffDraft = { id: string; name: string; title: string; storeId: string; isActive: boolean }
+type AccountDraft = {
+  authId: string
+  displayName: string
+  role: 'admin' | 'staff'
+  storeId: string
+  isActive: boolean
+}
 
 export default function Stores() {
-  const { state, upsertStore, toggleStoreActive, deleteStore, upsertStaff, toggleStaffActive, deleteStaff, upsertStoreAccess, disconnectStoreDevice } = useAdminData()
+  const {
+    state,
+    upsertStore,
+    toggleStoreActive,
+    deleteStore,
+    upsertStaff,
+    toggleStaffActive,
+    deleteStaff,
+    listAccounts,
+    configureAccount,
+  } = useAdminData()
   const [tab, setTab] = useState<StoreTab>('locations')
   const [storeOpen, setStoreOpen] = useState(false)
   const [staffOpen, setStaffOpen] = useState(false)
-  const [accessOpen, setAccessOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
+  const [accountEditing, setAccountEditing] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [staffStoreFilter, setStaffStoreFilter] = useState('all')
   const [storeDraft, setStoreDraft] = useState<StoreDraft>({ id: '', code: '', name: '', isActive: true })
-  const [staffDraft, setStaffDraft] = useState({ id: '', name: '', title: '', storeId: '', isActive: true })
-  const [accessDraft, setAccessDraft] = useState({ storeId: '', username: '', password: '', isEnabled: true })
+  const [staffDraft, setStaffDraft] = useState<StaffDraft>({ id: '', name: '', title: '', storeId: '', isActive: true })
+  const [accountDraft, setAccountDraft] = useState<AccountDraft>({ authId: '', displayName: '', role: 'staff', storeId: '', isActive: true })
   const [deletedStore, setDeletedStore] = useState<typeof state.stores[number] | null>(null)
+  const [accounts, setAccounts] = useState<Account[]>([])
 
   const activeStores = useMemo(() => state.stores.filter((store) => !store.isDeleted), [state.stores])
-  const storeAccessMap = useMemo(() => Object.fromEntries(state.storeAccess.map((item) => [item.storeId, item])), [state.storeAccess])
   const filteredStaff = state.staff.filter((member) => staffStoreFilter === 'all' || member.storeId === staffStoreFilter)
+  const unconfigured = useMemo(() => accounts.filter((account) => !account.staffId), [accounts])
   const deleteDependency = useMemo(() => {
-    if (!deletedStore) return { staff: 0, inventory: 0, access: 0 }
+    if (!deletedStore) return { staff: 0, inventory: 0 }
     return {
       staff: state.staff.filter((item) => item.storeId === deletedStore.id).length,
       inventory: state.inventoryUnits.filter((item) => item.storeId === deletedStore.id && item.status !== 'sold').length,
-      access: state.storeAccess.filter((item) => item.storeId === deletedStore.id).length,
     }
-  }, [deletedStore, state.inventoryUnits, state.staff, state.storeAccess])
+  }, [deletedStore, state.inventoryUnits, state.staff])
+
+  const storeName = (id: string | null | undefined) =>
+    state.stores.find((store) => store.id === id)?.name ?? '—'
+
+  // Fetch the Supabase account list whenever the Accounts tab is shown (and
+  // after any admin state change while it is open, so a freshly configured
+  // account reappears as configured).
+  useEffect(() => {
+    if (tab !== 'accounts') return
+    let alive = true
+    listAccounts()
+      .then((rows) => {
+        if (alive) setAccounts(rows)
+      })
+      .catch(() => {
+        /* ignore */
+      })
+    return () => {
+      alive = false
+    }
+  }, [tab, listAccounts])
 
   const openStoreForm = (store?: typeof state.stores[number]) => {
     setStoreDraft(store ? { id: store.id, code: store.code, name: store.name, isActive: store.isActive } : { id: '', code: '', name: '', isActive: true })
@@ -43,10 +84,20 @@ export default function Stores() {
     setStaffOpen(true)
   }
 
-  const openAccessForm = (storeId: string) => {
-    const entry = storeAccessMap[storeId]
-    setAccessDraft({ storeId, username: entry?.username ?? '', password: '', isEnabled: entry?.isEnabled ?? true })
-    setAccessOpen(true)
+  const openAccountForm = (account?: Account) => {
+    setAccountEditing(!!account)
+    if (account) {
+      setAccountDraft({
+        authId: account.authId,
+        displayName: account.displayName,
+        role: account.role === 'admin' ? 'admin' : 'staff',
+        storeId: account.role === 'admin' ? '' : (account.storeId ?? activeStores[0]?.id ?? ''),
+        isActive: account.isActive,
+      })
+    } else {
+      setAccountDraft({ authId: '', displayName: '', role: 'staff', storeId: activeStores[0]?.id ?? '', isActive: true })
+    }
+    setAccountOpen(true)
   }
 
   const handleSaveStore = () => {
@@ -61,17 +112,36 @@ export default function Stores() {
     setStaffOpen(false)
   }
 
-  const handleSaveAccess = () => {
-    if (!accessDraft.username.trim()) return
-    const existing = storeAccessMap[accessDraft.storeId]
-    upsertStoreAccess({ ...accessDraft, passwordUpdatedAt: existing?.passwordUpdatedAt ?? null, devices: existing?.devices ?? [] })
-    setAccessOpen(false)
+  const handleSaveAccount = async () => {
+    if (!accountDraft.authId || !accountDraft.displayName.trim()) return
+    if (accountDraft.role === 'staff' && !accountDraft.storeId) return
+    const ok = await configureAccount({
+      authId: accountDraft.authId,
+      displayName: accountDraft.displayName.trim(),
+      role: accountDraft.role,
+      storeId: accountDraft.role === 'admin' ? null : accountDraft.storeId,
+      isActive: accountDraft.isActive,
+    })
+    if (ok) {
+      setAccountOpen(false)
+    }
+  }
+
+  const toggleAccountActive = async (account: Account) => {
+    if (!account.staffId) return
+    await configureAccount({
+      authId: account.authId,
+      displayName: account.displayName,
+      role: account.role === 'admin' ? 'admin' : 'staff',
+      storeId: account.role === 'admin' ? null : account.storeId,
+      isActive: !account.isActive,
+    })
   }
 
   const handleDelete = async (force: boolean) => {
     if (!deletedStore) return
     const message = force
-      ? `Force delete ${deletedStore.name}? This removes staff, unsold inventory, credentials, and devices. Historical sales and movements remain.`
+      ? `Force delete ${deletedStore.name}? This removes staff and unsold inventory. Historical sales and movements remain.`
       : `Delete ${deletedStore.name}? Historical records remain.`
     if (window.confirm(message)) {
       const ok = await deleteStore(deletedStore.id, force)
@@ -82,19 +152,23 @@ export default function Stores() {
     }
   }
 
+  const accountSaveDisabled =
+    !accountDraft.authId || !accountDraft.displayName.trim() || (accountDraft.role === 'staff' && !accountDraft.storeId)
+  const selectedUnconfigured = unconfigured.find((account) => account.authId === accountDraft.authId)
+
   return (
     <div className="admin-page stores-page">
       <PageHeader
         title="Stores"
-        subtitle="Locations, staff assignments, and shared branch credentials."
-        actions={<div className="segment-wrap">{tabs.map((item) => <button key={item} type="button" className={`segmented-tab ${tab === item ? 'active' : ''}`} onClick={() => setTab(item)}>{item === 'locations' ? 'Locations' : item === 'staff' ? 'Staff' : 'Access'}</button>)}</div>}
+        subtitle="Locations, staff assignments, and Supabase login accounts."
+        actions={<div className="segment-wrap">{tabs.map((item) => <button key={item} type="button" className={`segmented-tab ${tab === item ? 'active' : ''}`} onClick={() => setTab(item)}>{item === 'locations' ? 'Locations' : item === 'staff' ? 'Staff' : 'Accounts'}</button>)}</div>}
       />
 
       {tab === 'locations' ? <>
         <div className="manager-toolbar"><div className="toolbar-right full"><button type="button" className="primary-button" onClick={() => openStoreForm()}><Plus size={16} />Add location</button></div></div>
         <div className="record-stack compact">
           {activeStores.length > 0 ? activeStores.map((store) => <div key={store.id} className="record-card stock-row">
-            <div className="record-main"><strong>{store.name}</strong></div>
+            <div className="record-main"><strong>{store.name}</strong><small>Code: {store.code}</small></div>
             <div className="record-side column align-end"><StatusBadge label={store.isActive ? 'Active' : 'Inactive'} tone={store.isActive ? 'success' : 'neutral'} /></div>
             <div className="record-actions compact-actions">
               <button type="button" className="text-button" onClick={() => openStoreForm(store)}>Edit</button>
@@ -115,27 +189,42 @@ export default function Stores() {
         </div>
         <div className="record-stack compact">
           {filteredStaff.length > 0 ? filteredStaff.map((member) => <div key={member.id} className="record-card stock-row">
-            <div className="record-main"><strong>{member.name}</strong><small>{member.title} - {state.stores.find((store) => store.id === member.storeId)?.name ?? 'Deleted store'}</small></div>
+            <div className="record-main"><strong>{member.name}</strong><small>{member.title} - {storeName(member.storeId)}</small></div>
             <div className="record-side"><StatusBadge label={member.isActive ? 'Active' : 'Inactive'} tone={member.isActive ? 'success' : 'neutral'} /></div>
             <div className="record-actions compact-actions"><button type="button" className="text-button" onClick={() => openStaffForm(member)}>Edit</button><button type="button" className="text-button" onClick={() => toggleStaffActive(member.id)}>{member.isActive ? 'Deactivate' : 'Activate'}</button>{!member.isActive ? <button type="button" className="text-button danger-text-button" onClick={() => { if (window.confirm(`Delete ${member.name}?`)) deleteStaff(member.id) }}>Delete</button> : null}</div>
           </div>) : <EmptyState title="No staff records" description="No staff members match this store." />}
         </div>
       </> : null}
 
-      {tab === 'access' ? <div className="record-stack compact">
-        {activeStores.length > 0 ? activeStores.map((store) => {
-          const entry = storeAccessMap[store.id]
-          return <div key={store.id} className="record-card access-record">
-            <div className="record-main"><strong>{store.name}</strong><small>{entry?.username ? `Username: ${entry.username}` : 'Credentials not set'}</small></div>
-            <div className="record-side"><StatusBadge label={entry?.isEnabled ? 'Enabled' : 'Disabled'} tone={entry?.isEnabled ? 'success' : 'neutral'} /></div>
-            <div className="record-actions compact-actions"><button type="button" className="text-button" onClick={() => openAccessForm(store.id)}>Edit credentials</button></div>
-            {entry?.devices.length ? <div className="access-devices">{entry.devices.map((device) => <div key={device.id} className="access-device"><div><strong>{device.name}</strong><small>Last active {new Date(device.lastActiveAt).toLocaleDateString('en-PH')}</small></div><button type="button" className="text-button danger-text-button" onClick={() => { if (window.confirm(`Disconnect ${device.name}?`)) disconnectStoreDevice(store.id, device.id) }}>Disconnect</button></div>)}</div> : null}
-          </div>
-        }) : <EmptyState title="No locations" description="Add a store to manage its shared credentials." />}
-      </div> : null}
+      {tab === 'accounts' ? <>
+        <div className="manager-toolbar"><div className="toolbar-right full"><button type="button" className="primary-button" onClick={() => openAccountForm()} disabled={unconfigured.length === 0}><KeyRound size={16} />Add account</button></div></div>
+        <div className="record-stack compact">
+          {accounts.length > 0 ? accounts.map((account) => {
+            const configured = !!account.staffId
+            return <div key={account.authId} className="record-card stock-row">
+              <div className="record-main">
+                <strong>{configured ? account.displayName : account.email}</strong>
+                <small>{configured
+                  ? `${account.email} · ${account.role === 'admin' ? 'Admin (all stores)' : storeName(account.storeId)}`
+                  : 'Login created in Supabase Auth — not configured yet'}</small>
+              </div>
+              <div className="record-side column align-end">
+                {configured
+                  ? <StatusBadge label={account.role === 'admin' ? 'Admin' : 'Staff'} tone={account.role === 'admin' ? 'info' : 'neutral'} />
+                  : <StatusBadge label="No profile" tone="warning" />}
+                {configured ? <StatusBadge label={account.isActive ? 'Active' : 'Inactive'} tone={account.isActive ? 'success' : 'neutral'} /> : null}
+              </div>
+              <div className="record-actions compact-actions">
+                <button type="button" className="text-button" onClick={() => openAccountForm(account)}>{configured ? 'Edit' : 'Configure'}</button>
+                {configured ? <button type="button" className="text-button" onClick={() => toggleAccountActive(account)}>{account.isActive ? 'Deactivate' : 'Activate'}</button> : null}
+              </div>
+            </div>
+          }) : <EmptyState title="No login accounts" description="Create a login (email + password) in Supabase Auth, then configure its profile here." />}
+        </div>
+      </> : null}
 
       <Drawer open={storeOpen} size="sheet" title={storeDraft.id ? 'Edit location' : 'Add location'} subtitle="Keep the physical network current and active." onClose={() => setStoreOpen(false)} footer={<div className="modal-footer-actions"><button type="button" className="secondary-button" onClick={() => setStoreOpen(false)}>Cancel</button><button type="button" className="primary-button" onClick={handleSaveStore}>Save location</button></div>}>
-        <div className="form-grid">
+        <div className="form-stack">
           <Field label="Store code"><input value={storeDraft.code} onChange={(event) => setStoreDraft((previous) => ({ ...previous, code: event.target.value }))} className="admin-input" /></Field>
           <Field label="Store name"><input value={storeDraft.name} onChange={(event) => setStoreDraft((previous) => ({ ...previous, name: event.target.value }))} className="admin-input" /></Field>
           <label className="check-row large"><input type="checkbox" checked={storeDraft.isActive} onChange={(event) => setStoreDraft((previous) => ({ ...previous, isActive: event.target.checked }))} /><span>Active location</span></label>
@@ -143,7 +232,7 @@ export default function Stores() {
       </Drawer>
 
       <Drawer open={staffOpen} size="sheet" title={staffDraft.id ? 'Edit staff' : 'Add staff'} subtitle="Record the people assigned to each boutique." onClose={() => setStaffOpen(false)} footer={<div className="modal-footer-actions"><button type="button" className="secondary-button" onClick={() => setStaffOpen(false)}>Cancel</button><button type="button" className="primary-button" onClick={handleSaveStaff}>Save staff</button></div>}>
-        <div className="form-grid">
+        <div className="form-stack">
           <Field label="Name"><input value={staffDraft.name} onChange={(event) => setStaffDraft((previous) => ({ ...previous, name: event.target.value }))} className="admin-input" /></Field>
           <Field label="Role"><input value={staffDraft.title} onChange={(event) => setStaffDraft((previous) => ({ ...previous, title: event.target.value }))} className="admin-input" /></Field>
           <Field label="Assigned location"><select value={staffDraft.storeId} onChange={(event) => setStaffDraft((previous) => ({ ...previous, storeId: event.target.value }))} className="admin-select">{activeStores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}</select></Field>
@@ -151,19 +240,36 @@ export default function Stores() {
         </div>
       </Drawer>
 
-      <Drawer open={accessOpen} size="sheet" title="Shared store credentials" subtitle="The password is never shown after it is saved." onClose={() => setAccessOpen(false)} footer={<div className="modal-footer-actions"><button type="button" className="secondary-button" onClick={() => setAccessOpen(false)}>Cancel</button><button type="button" className="primary-button" onClick={handleSaveAccess}>Save credentials</button></div>}>
-        <div className="form-grid">
-          <Field label="Store"><select value={accessDraft.storeId} onChange={(event) => openAccessForm(event.target.value)} className="admin-select">{activeStores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}</select></Field>
-          <Field label="Shared username"><input value={accessDraft.username} onChange={(event) => setAccessDraft((previous) => ({ ...previous, username: event.target.value }))} className="admin-input" /></Field>
-          <Field label="New password" hint="Leave blank to keep the current password."><input type="password" value={accessDraft.password} onChange={(event) => setAccessDraft((previous) => ({ ...previous, password: event.target.value }))} className="admin-input" autoComplete="new-password" /></Field>
-          <label className="check-row large"><input type="checkbox" checked={accessDraft.isEnabled} onChange={(event) => setAccessDraft((previous) => ({ ...previous, isEnabled: event.target.checked }))} /><span>Enable shared store login</span></label>
+      <Drawer open={accountOpen} size="sheet" title={accountEditing ? 'Edit account' : 'Add account'} subtitle="Email and password are managed in Supabase Auth. Configure the profile, role, and store here." onClose={() => setAccountOpen(false)} footer={<div className="modal-footer-actions"><button type="button" className="secondary-button" onClick={() => setAccountOpen(false)}>Cancel</button><button type="button" className="primary-button" disabled={accountSaveDisabled} onClick={handleSaveAccount}>{accountEditing ? 'Save changes' : 'Add account'}</button></div>}>
+        <div className="form-stack">
+          {accountEditing ? (
+            <Field label="Email (managed in Supabase Auth)"><div className="admin-input readonly-field">{accounts.find((account) => account.authId === accountDraft.authId)?.email ?? ''}</div></Field>
+          ) : (
+            <Field label="Supabase login" hint="Only logins created in Supabase Auth but not yet configured appear here.">
+              {unconfigured.length === 0
+                ? <div className="form-empty-hint">No new Supabase logins to configure. Create the login (email + password) in the Supabase Auth dashboard first — it will appear here afterwards.</div>
+                : <select value={accountDraft.authId} onChange={(event) => setAccountDraft((previous) => ({ ...previous, authId: event.target.value }))} className="admin-select">{unconfigured.map((account) => <option key={account.authId} value={account.authId}>{account.email}</option>)}</select>}
+            </Field>
+          )}
+
+          {!accountEditing && selectedUnconfigured ? <Field label="Chosen login"><div className="admin-input readonly-field">{selectedUnconfigured.email}</div></Field> : null}
+
+          <Field label="Display name" hint="What this person is called in the app."><input value={accountDraft.displayName} onChange={(event) => setAccountDraft((previous) => ({ ...previous, displayName: event.target.value }))} className="admin-input" placeholder="e.g. Alyssa" /></Field>
+
+          <Field label="Role"><select value={accountDraft.role} onChange={(event) => setAccountDraft((previous) => ({ ...previous, role: event.target.value as AccountDraft['role'], storeId: event.target.value === 'admin' ? '' : (previous.storeId || activeStores[0]?.id || '') }))} className="admin-select"><option value="staff">Staff</option><option value="admin">Admin</option></select></Field>
+
+          {accountDraft.role === 'admin'
+            ? <p className="form-note">Admins have access across all stores — no store assignment.</p>
+            : <Field label="Assigned location"><select value={accountDraft.storeId} onChange={(event) => setAccountDraft((previous) => ({ ...previous, storeId: event.target.value }))} className="admin-select">{activeStores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}</select></Field>}
+
+          <label className="check-row large"><input type="checkbox" checked={accountDraft.isActive} onChange={(event) => setAccountDraft((previous) => ({ ...previous, isActive: event.target.checked }))} /><span>Active account</span></label>
         </div>
       </Drawer>
 
-      <Drawer open={deleteOpen} size="sheet" title="Delete location" subtitle="The location remains a read-only Deleted store reference in historical records." onClose={() => setDeleteOpen(false)} footer={<div className="modal-footer-actions"><button type="button" className="secondary-button" onClick={() => setDeleteOpen(false)}>Cancel</button>{deleteDependency.staff + deleteDependency.inventory + deleteDependency.access === 0 ? <button type="button" className="primary-button" onClick={() => handleDelete(false)}>Delete location</button> : <button type="button" className="secondary-button danger-button" onClick={() => handleDelete(true)}>Force delete</button>}</div>}>
+      <Drawer open={deleteOpen} size="sheet" title="Delete location" subtitle="The location remains a read-only Deleted store reference in historical records." onClose={() => setDeleteOpen(false)} footer={<div className="modal-footer-actions"><button type="button" className="secondary-button" onClick={() => setDeleteOpen(false)}>Cancel</button>{deleteDependency.staff + deleteDependency.inventory === 0 ? <button type="button" className="primary-button" onClick={() => handleDelete(false)}>Delete location</button> : <button type="button" className="secondary-button danger-button" onClick={() => handleDelete(true)}>Force delete</button>}</div>}>
         <div className="delete-summary">
           <p><strong>{deletedStore?.name}</strong> must be inactive before it can be deleted.</p>
-          {deleteDependency.staff + deleteDependency.inventory + deleteDependency.access > 0 ? <ul><li>{deleteDependency.staff} staff assignment(s)</li><li>{deleteDependency.inventory} unsold inventory unit(s)</li><li>{deleteDependency.access} shared credential record(s)</li></ul> : <p>No operational records will be removed.</p>}
+          {deleteDependency.staff + deleteDependency.inventory > 0 ? <ul><li>{deleteDependency.staff} staff assignment(s)</li><li>{deleteDependency.inventory} unsold inventory unit(s)</li></ul> : <p>No operational records will be removed.</p>}
           <p>Force delete removes operational records only. Orders, payments, sales, and movement history remain.</p>
         </div>
       </Drawer>

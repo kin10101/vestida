@@ -16,6 +16,7 @@ interface TodaySummary {
   totalSales: number
   cash: number
   gcash: number
+  bank: number
   incoming: number
 }
 
@@ -23,7 +24,7 @@ export default function Home() {
   const { user } = useAuth()
   const storeCode = user?.storeCode ?? ''
   const [storeName, setStoreName] = useState(storeCode)
-  const [today, setToday] = useState<TodaySummary>({ totalSales: 0, cash: 0, gcash: 0, incoming: 0 })
+  const [today, setToday] = useState<TodaySummary>({ totalSales: 0, cash: 0, gcash: 0, bank: 0, incoming: 0 })
 
   useEffect(() => {
     let alive = true
@@ -65,8 +66,8 @@ export default function Home() {
             <p className="breakdown-value">{formatPesoWhole(today.cash)}</p>
           </div>
           <div>
-            <p className="breakdown-label">Gcash</p>
-            <p className="breakdown-value">{formatPesoWhole(today.gcash)}</p>
+            <p className="breakdown-label">GCash &amp; Bank Transfer</p>
+            <p className="breakdown-value">{formatPesoWhole(today.gcash + today.bank)}</p>
           </div>
         </div>
       </section>

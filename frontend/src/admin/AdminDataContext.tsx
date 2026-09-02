@@ -2,6 +2,8 @@
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import type {
   AdminState,
+  Account,
+  AccountRole,
   IntakeDraft,
   OrderDraft,
   OrderStatus,
@@ -39,6 +41,14 @@ export interface AdminDataContextValue {
   bulkToggleStaffActive: (ids: string[], isActive: boolean) => Promise<void>
   upsertStoreAccess: (record: StoreAccess) => void
   disconnectStoreDevice: (storeId: string, deviceId: string) => void
+  listAccounts: () => Promise<Account[]>
+  configureAccount: (input: {
+    authId: string
+    displayName: string
+    role: AccountRole
+    storeId: string | null
+    isActive: boolean
+  }) => Promise<boolean>
   applyIntake: (draft: IntakeDraft) => Promise<void>
   adjustInventoryUnit: (unitId: string, nextStatus: UnitStatus, note: string, staffName: string) => Promise<void>
   bulkAdjustInventoryUnits: (unitIds: string[], nextStatus: UnitStatus, note: string, staffName: string) => Promise<void>
@@ -276,6 +286,19 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
             ? { ...item, devices: item.devices.filter((device) => device.id !== deviceId) }
             : item,
         ),
+      }))
+    },
+    listAccounts: async () => {
+      const data = await apiRpc<{ accounts: Account[] }>('admin_list_accounts', {})
+      return data?.accounts ?? []
+    },
+    configureAccount: async (input) => {
+      return persist(() => apiRpc('admin_configure_account', {
+        p_auth_id: input.authId,
+        p_name: input.displayName,
+        p_role: input.role,
+        p_store_id: input.role === 'admin' ? null : input.storeId,
+        p_is_active: input.isActive,
       }))
     },
     applyIntake: async (draft) => {
