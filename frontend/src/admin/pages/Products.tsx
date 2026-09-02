@@ -618,10 +618,14 @@ export default function Products() {
       <div className="stock-modal">
         <div className="stock-product-head">
           <strong className="stock-product-name">{selectedProduct?.name ?? 'Product'}</strong>
-          <span className="stock-product-meta">
-            {selectedColor ? `${selectedColor}${selectedSize ? `, ${selectedSize}` : ''}` : (selectedSize || '—')}
+          <span className="stock-product-variant">
+            {selectedColor
+              ? `${selectedColor}${selectedSize ? ` · Size ${selectedSize}` : ''}`
+              : selectedSize
+                ? `Size ${selectedSize}`
+                : '—'}
           </span>
-          {displaySku ? <span className="stock-product-sku sku-mono">{displaySku}</span> : null}
+          {displaySku ? <span className="stock-product-sku">SKU · {displaySku}</span> : null}
         </div>
 
         <Field label="Quantity to add">
