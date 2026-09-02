@@ -616,10 +616,12 @@ export default function Products() {
       }
     >
       <div className="stock-modal">
-        <div className="stock-matrix-summary" aria-label="Receiving">
-          <span className="stock-chip">{selectedColor || '—'}</span>
-          <span className="stock-chip">{selectedSize || '—'}</span>
-          <span className="stock-chip stock-sku"><span className="sku-mono">{displaySku || '—'}</span></span>
+        <div className="stock-product-head">
+          <strong className="stock-product-name">{selectedProduct?.name ?? 'Product'}</strong>
+          <span className="stock-product-meta">
+            {selectedColor ? `${selectedColor}${selectedSize ? `, ${selectedSize}` : ''}` : (selectedSize || '—')}
+          </span>
+          {displaySku ? <span className="stock-product-sku sku-mono">{displaySku}</span> : null}
         </div>
 
         <Field label="Quantity to add">
