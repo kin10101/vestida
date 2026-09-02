@@ -23,7 +23,7 @@ interface CatalogVariant {
   id: string
   color: string
   size: string | null
-  available: number
+  inStock: number
 }
 
 interface CatalogProduct {
@@ -64,7 +64,7 @@ function formatDate(value: string): string {
 }
 
 function totalAvailable(p: CatalogProduct): number {
-  return p.variants.reduce((sum, v) => sum + v.available, 0)
+  return p.variants.reduce((sum, v) => sum + v.inStock, 0)
 }
 
 export default function Transfers() {
@@ -159,7 +159,13 @@ export default function Transfers() {
       : []
   const selectedVariant =
     current?.variants.find((v) => v.color === color && v.size === size) ?? null
-  const stock = selectedVariant?.available ?? 0
+  const stock = selectedVariant?.inStock ?? 0
+
+  // A choice is only usable when at least one matching variant has stock in this store.
+  const colorStocked = (c: string) =>
+    current?.variants.some((v) => v.color === c && v.inStock > 0) ?? false
+  const sizeStocked = (s: string | null) =>
+    current?.variants.some((v) => v.color === color && v.size === s && v.inStock > 0) ?? false
 
   const pieceCount = items.reduce((sum, i) => sum + i.qty, 0)
 
@@ -452,7 +458,8 @@ export default function Transfers() {
                               key={c}
                               className={`option-chip${color === c ? ' active' : ''}`}
                               onClick={() => pickColor(c)}
-                              whileTap={{ scale: 0.94 }}
+                              disabled={!colorStocked(c)}
+                              whileTap={colorStocked(c) ? { scale: 0.94 } : undefined}
                             >
                               {c}
                             </motion.button>
@@ -469,7 +476,8 @@ export default function Transfers() {
                                   key={s ?? 'one-size'}
                                   className={`option-chip${size === s ? ' active' : ''}`}
                                   onClick={() => setSize(s)}
-                                  whileTap={{ scale: 0.94 }}
+                                  disabled={!sizeStocked(s)}
+                                  whileTap={sizeStocked(s) ? { scale: 0.94 } : undefined}
                                 >
                                   {s}
                                 </motion.button>
