@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion, MotionConfig, useReducedMotion } from 'framer-motion'
 import { Banknote, ChevronDown, ChevronUp, Landmark, Search, Smartphone } from 'lucide-react'
 import { formatPesoWhole } from '../../shared/utils/currency'
+import { parseDbUtc } from '../../shared/utils/dates'
 import { apiRpc } from '../../shared/api/client'
 import { useHeaderTitleValue } from '../headerTitle'
 
@@ -55,7 +56,7 @@ function formatTime(value: string) {
   return new Intl.DateTimeFormat('en-US', {
     hour: 'numeric',
     minute: '2-digit',
-  }).format(new Date(value))
+  }).format(parseDbUtc(value))
 }
 
 export default function History() {
@@ -92,7 +93,7 @@ export default function History() {
   const selectedDayKey = day === 'today' ? getDateKey(0) : getDateKey(-1)
 
   const dayOrders = useMemo(
-    () => orders.filter((order) => getLocalDateKey(new Date(order.createdAt)) === selectedDayKey),
+    () => orders.filter((order) => getLocalDateKey(parseDbUtc(order.createdAt)) === selectedDayKey),
     [orders, selectedDayKey],
   )
 
@@ -171,8 +172,6 @@ export default function History() {
             className={`option-chip${staff === option ? ' active' : ''}`}
             onClick={() => setStaff(option)}
             whileTap={{ scale: 0.94 }}
-            animate={{ scale: staff === option ? 1.04 : 1 }}
-            transition={{ type: 'spring', stiffness: 500, damping: 28 }}
           >
             {option}
           </motion.button>

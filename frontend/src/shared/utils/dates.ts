@@ -7,6 +7,22 @@ export function formatDate(value: Date | string): string {
   }).format(date)
 }
 
+/**
+ * Parse a timestamp string returned by a Supabase RPC. The DB columns are
+ * `timestamp` WITHOUT time zone and the server runs in UTC, so Postgres text
+ * has NO offset marker (e.g. "2026-09-02 17:13:50"). Handing that string to
+ * `new Date()` makes the browser treat it as LOCAL time, shifting everything
+ * by the UTC offset (8h for the Philippines). Treat it as UTC instead so it
+ * converts to the correct local wall time.
+ */
+export function parseDbUtc(value: string): Date {
+  const trimmed = value.trim()
+  // Already carries a zone marker (Z or ±hh:mm) → parse as-is.
+  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed)) return new Date(trimmed)
+  // "YYYY-MM-DD HH:MM:SS[.ffffff]" → reinterpret as UTC.
+  return new Date(trimmed.replace(' ', 'T') + 'Z')
+}
+
 export function dateKey(value: Date | string): string {
   const date = typeof value === 'string' ? new Date(value) : value
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(

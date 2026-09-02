@@ -124,9 +124,7 @@ export default function Stock() {
                     className={`store-chip${active ? ' active' : ''}`}
                     aria-pressed={active}
                     onClick={() => setStoreId((cur) => (cur === s.code ? ALL : s.code))}
-                    whileTap={{ scale: 0.94 }}
-                    animate={{ scale: active ? 1.04 : 1 }}
-                    transition={{ type: 'spring', stiffness: 500, damping: 28 }}
+                    whileTap={{ scale: 0.97 }}
                   >
                     {s.code}
                   </motion.button>
@@ -155,8 +153,6 @@ export default function Stock() {
               className={`chip${categoryId === ALL ? ' active' : ''}`}
               onClick={() => setCategoryId(ALL)}
               whileTap={{ scale: 0.94 }}
-              animate={{ scale: categoryId === ALL ? 1.04 : 1 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 28 }}
             >
               All
             </motion.button>
@@ -167,8 +163,6 @@ export default function Stock() {
                 className={`chip${categoryId === c.id ? ' active' : ''}`}
                 onClick={() => setCategoryId(c.id)}
                 whileTap={{ scale: 0.94 }}
-                animate={{ scale: categoryId === c.id ? 1.04 : 1 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 28 }}
               >
                 {c.name}
               </motion.button>

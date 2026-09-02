@@ -353,8 +353,6 @@ export default function Sale() {
           className={`chip${categoryId === ALL ? ' active' : ''}`}
           onClick={() => setCategoryId(ALL)}
           whileTap={{ scale: 0.94 }}
-          animate={{ scale: categoryId === ALL ? 1.04 : 1 }}
-          transition={{ type: 'spring', stiffness: 500, damping: 28 }}
         >
           All
         </motion.button>
@@ -365,8 +363,6 @@ export default function Sale() {
             className={`chip${categoryId === c.id ? ' active' : ''}`}
             onClick={() => setCategoryId(c.id)}
             whileTap={{ scale: 0.94 }}
-            animate={{ scale: categoryId === c.id ? 1.04 : 1 }}
-            transition={{ type: 'spring', stiffness: 500, damping: 28 }}
           >
             {c.name}
           </motion.button>
@@ -424,8 +420,6 @@ export default function Sale() {
                               className={`option-chip${color === c ? ' active' : ''}`}
                               onClick={() => pickColor(c)}
                               whileTap={{ scale: 0.94 }}
-                              animate={{ scale: color === c ? 1.04 : 1 }}
-                              transition={{ type: 'spring', stiffness: 500, damping: 28 }}
                             >
                               {c}
                             </motion.button>
@@ -443,8 +437,6 @@ export default function Sale() {
                                   className={`option-chip${size === s ? ' active' : ''}`}
                                   onClick={() => setSize(s)}
                                   whileTap={{ scale: 0.94 }}
-                                  animate={{ scale: size === s ? 1.04 : 1 }}
-                                  transition={{ type: 'spring', stiffness: 500, damping: 28 }}
                                 >
                                   {s}
                                 </motion.button>
@@ -578,8 +570,6 @@ export default function Sale() {
               aria-pressed={method === m.id}
               onClick={() => setMethod(m.id)}
               whileTap={{ scale: 0.94 }}
-              animate={{ scale: method === m.id ? 1.04 : 1 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 28 }}
             >
               <Icon size={16} />
               {m.label}
@@ -632,8 +622,6 @@ export default function Sale() {
             aria-pressed={careOf === s}
             onClick={() => setCareOf(s)}
             whileTap={{ scale: 0.94 }}
-            animate={{ scale: careOf === s ? 1.04 : 1 }}
-            transition={{ type: 'spring', stiffness: 500, damping: 28 }}
           >
             {s}
           </motion.button>

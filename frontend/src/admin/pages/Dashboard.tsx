@@ -3,6 +3,7 @@ import { ArrowUpRight, ChevronDown, MapPin, TrendingUp, Trophy, Warehouse, X } f
 import { useNavigate } from 'react-router-dom'
 import { useAdminData } from '../AdminDataContext'
 import { EmptyState, PageHeader, StatusBadge } from '../ui'
+import { parseDbUtc } from '../../shared/utils/dates'
 import SalesTrendChart from '../SalesTrendChart'
 import type { ActivePoint, RangeKey } from '../SalesTrendChart'
 
@@ -28,7 +29,7 @@ function startOfWeek(date: Date) {
 }
 
 function matchesRange(value: string, range: RangeKey) {
-  const date = new Date(value)
+  const date = parseDbUtc(value)
   const now = new Date()
   if (range === 'day') return date >= startOfDay(now) && date <= now
   if (range === 'week') return date >= startOfWeek(now) && date <= now
@@ -108,22 +109,30 @@ export default function Dashboard() {
 
   const topSellers = useMemo(() => {
     const orderIds = new Set(filteredOrders.map((order) => order.id))
-    const sales = new Map<string, { label: string; quantity: number; revenue: number }>()
+    const variantById = new Map(state.productVariants.map((variant) => [variant.id, variant]))
+    const productById = new Map(state.products.map((product) => [product.id, product]))
+    const sales = new Map<string, { label: string; sub: string; quantity: number; revenue: number }>()
     state.orderLines.filter((line) => orderIds.has(line.orderId)).forEach((line) => {
-      const current = sales.get(line.variantId ?? line.description) ?? { label: line.description, quantity: 0, revenue: 0 }
-      sales.set(line.variantId ?? line.description, {
-        label: current.label,
-        quantity: current.quantity + line.quantity,
-        revenue: current.revenue + line.quantity * line.agreedPriceCents,
+      const variant = line.variantId ? variantById.get(line.variantId) : undefined
+      const product = variant ? productById.get(variant.productId) : undefined
+      const label = product?.name ?? (variant ? 'Variant' : (line.description.trim() || 'Made-to-Order'))
+      const sub = variant ? [variant.color, variant.size].filter(Boolean).join(' · ') : ''
+      const key = line.variantId ?? line.description
+      const current = sales.get(key)
+      sales.set(key, {
+        label,
+        sub,
+        quantity: (current?.quantity ?? 0) + line.quantity,
+        revenue: (current?.revenue ?? 0) + line.quantity * line.agreedPriceCents,
       })
     })
     return [...sales.values()].sort((a, b) => b.quantity - a.quantity || b.revenue - a.revenue).slice(0, 5)
-  }, [filteredOrders, state.orderLines])
+  }, [filteredOrders, state.orderLines, state.productVariants, state.products])
 
   const recentSales = useMemo(
     () => [...state.orders]
       .filter((order) => selectedStore === 'all' || order.storeId === selectedStore)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .sort((a, b) => parseDbUtc(b.createdAt).getTime() - parseDbUtc(a.createdAt).getTime())
       .slice(0, 5),
     [selectedStore, state.orders],
   )
@@ -202,13 +211,13 @@ export default function Dashboard() {
 
         <section className="admin-panel dashboard-clickable" onClick={() => navigate('/admin/sales?tab=insights')}>
           <div className="panel-header-row"><h3>Top sellers</h3><div className="mini-icon-wrap"><Trophy size={16} /></div></div>
-          <div className="stack-list">{topSellers.length > 0 ? topSellers.map((item) => <div key={item.label} className="stack-item"><div><strong>{item.label}</strong><small>{item.quantity} units sold</small></div><strong>{formatPeso(item.revenue)}</strong></div>) : <EmptyState title="No top sellers yet" description="Product sales will appear here once orders are recorded." />}</div>
+          <div className="stack-list">{topSellers.length > 0 ? topSellers.map((item) => <div key={item.label + item.sub} className="stack-item"><div><strong>{item.label}</strong><small>{item.sub ? `${item.sub} · ` : ''}{item.quantity} units sold</small></div><strong>{formatPeso(item.revenue)}</strong></div>) : <EmptyState title="No top sellers yet" description="Product sales will appear here once orders are recorded." />}</div>
         </section>
       </div>
 
       <section className="admin-panel recent-activity-panel dashboard-clickable" onClick={() => navigate('/admin/sales?tab=transactions')}>
         <div className="panel-header-row"><h3>Recent activity</h3><div className="mini-icon-wrap"><ArrowUpRight size={16} /></div></div>
-        <div className="timeline-list">{recentSales.length > 0 ? recentSales.map((order) => <div key={order.id} className="timeline-item"><div className="timeline-bullet" /><div className="timeline-copy"><strong>{order.customerName || 'Walk-in'}</strong><small>{order.reference}</small></div><span>{storeName(order.storeId)} · {new Date(order.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</span></div>) : <EmptyState title="No recent sales" description="Sales will appear here as orders are recorded." />}</div>
+        <div className="timeline-list">{recentSales.length > 0 ? recentSales.map((order) => <div key={order.id} className="timeline-item"><div className="timeline-bullet" /><div className="timeline-copy"><strong>{order.customerName || 'Walk-in'}</strong><small>{order.reference}</small></div><span>{storeName(order.storeId)} · {parseDbUtc(order.createdAt).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</span></div>) : <EmptyState title="No recent sales" description="Sales will appear here as orders are recorded." />}</div>
       </section>
 
       {chartExpanded ? (
