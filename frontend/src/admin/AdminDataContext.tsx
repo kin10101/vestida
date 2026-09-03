@@ -53,6 +53,7 @@ export interface AdminDataContextValue {
   applyIntake: (draft: IntakeDraft) => Promise<void>
   adjustInventoryUnit: (unitId: string, nextStatus: UnitStatus, note: string, staffName: string) => Promise<void>
   bulkAdjustInventoryUnits: (unitIds: string[], nextStatus: UnitStatus, note: string, staffName: string) => Promise<void>
+  transferStock: (input: { fromStoreId: string; toStoreId: string; items: Array<{ variantId: string; quantity: number }>; note: string }) => Promise<void>
   upsertOrder: (draft: OrderDraft) => Promise<void>
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>
   addPayment: (draft: PaymentDraft) => Promise<void>
@@ -320,6 +321,14 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
     },
     bulkAdjustInventoryUnits: async (unitIds, nextStatus, note, _staffName) => {
       await persist(() => apiRpc('admin_adjust_units', { p_unit_ids: unitIds, p_next_status: nextStatus, p_note: note || null }))
+    },
+    transferStock: async ({ fromStoreId, toStoreId, items, note }) => {
+      await persist(() => apiRpc('admin_transfer_stock', {
+        p_from_store_id: fromStoreId,
+        p_to_store_id: toStoreId,
+        p_items: items.map((item) => ({ variant_id: item.variantId, quantity: item.quantity })),
+        p_note: note || null,
+      }))
     },
     upsertOrder: async (draft) => {
       await persist(() => apiRpc('admin_upsert_order', {

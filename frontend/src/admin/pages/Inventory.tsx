@@ -1,449 +1,553 @@
-import { useMemo, useState } from 'react'
-import { ChevronDown, Plus } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import type { MouseEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { ArrowRightLeft, ChevronDown, History, MoreHorizontal, Plus, SlidersHorizontal } from 'lucide-react'
 import { useAdminData } from '../AdminDataContext'
-import type { InventoryUnit, ProductVariant, UnitStatus } from '../data'
-import { Drawer, EmptyState, Field, PageHeader, StatusBadge } from '../ui'
+import type { InventoryUnit, Product, ProductVariant, UnitStatus } from '../data'
+import { Drawer, EmptyState, Field, PageHeader, StatusBadge, Toast } from '../ui'
 
-const PAGE_SIZE = 10
+type StockScope = 'all' | 'in_stock' | 'out'
 
-const formatPeso = (value: number) =>
-  new Intl.NumberFormat('en-PH', {
-    style: 'currency',
-    currency: 'PHP',
-    maximumFractionDigits: 0,
-  }).format(value / 100)
-
-const getVariantName = (variantId: string, variants: ProductVariant[]) => {
-  const variant = variants.find((item) => item.id === variantId)
-  if (!variant) {
-    return 'Unknown variant'
-  }
-
-  return `${variant.color} ${variant.size}`
+interface VariantRow {
+  variant: ProductVariant
+  product: Product
+  onHand: number
+  scopeUnits: InventoryUnit[]
+  perStore: Array<{ storeId: string; count: number }>
 }
 
-const getProductName = (variantId: string, variants: ProductVariant[], products: ReturnType<typeof useAdminData>['state']['products']) => {
-  const variant = variants.find((item) => item.id === variantId)
-  if (!variant) {
-    return 'Unknown product'
-  }
+interface ProductGroup {
+  product: Product
+  categoryName: string
+  rows: VariantRow[]
+  totalOnHand: number
+  outCount: number
+  storeCount: number
+}
 
-  return products.find((product) => product.id === variant.productId)?.name ?? 'Unknown product'
+const KIND_LABELS: Record<string, string> = {
+  received: 'Received',
+  transferred_out: 'Transferred out',
+  transferred_in: 'Transferred in',
+  sold: 'Sold',
+  adjustment: 'Adjusted',
+}
+
+const fmtDateTime = (value: string) => {
+  const date = /(?:Z|[+-]\d{2}:\d{2})$/.test(value) ? new Date(value) : new Date(value.replace(' ', 'T') + 'Z')
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+  return date.toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
 export default function Inventory() {
-  const { state, applyIntake, adjustInventoryUnit, bulkAdjustInventoryUnits } = useAdminData()
+  const navigate = useNavigate()
+  const { state, adjustInventoryUnit, transferStock } = useAdminData()
   const [storeFilter, setStoreFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState<StockScope>('all')
   const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
-  const [expandedProductIds, setExpandedProductIds] = useState<string[]>([])
-  const [bulkMode, setBulkMode] = useState(false)
-  const [bulkMenuOpen, setBulkMenuOpen] = useState(false)
-  const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([])
-  const [bulkStatusDraft, setBulkStatusDraft] = useState<{ status: UnitStatus; note: string; staffName: string }>({
-    status: 'in_stock',
-    note: '',
-    staffName: 'Admin',
-  })
-  const [intakeOpen, setIntakeOpen] = useState(false)
-  const [adjustOpen, setAdjustOpen] = useState(false)
-  const [adjustUnitId, setAdjustUnitId] = useState('')
-  const [intakeDraft, setIntakeDraft] = useState({
-    variantId: state.productVariants[0]?.id ?? '',
-    storeId: state.stores[0]?.id ?? '',
-    quantity: 1,
-    costPriceCents: state.productVariants[0]?.costPriceCents ?? 150000,
-    staffName: 'Admin',
-  })
-  const [adjustDraft, setAdjustDraft] = useState<{ status: UnitStatus; note: string; staffName: string }>({
-    status: 'in_stock',
-    note: '',
-    staffName: 'Admin',
-  })
+  const [expandedIds, setExpandedIds] = useState<string[]>([])
+  const [menu, setMenu] = useState<{ variantId: string; x: number; y: number } | null>(null)
 
-  const catalogStockOverview = useMemo(() => {
-    const stockScope = state.inventoryUnits.filter((unit) => storeFilter === 'all' || unit.storeId === storeFilter)
+  // Variant action states.
+  const [adjustVariantId, setAdjustVariantId] = useState<string | null>(null)
+  const [unitModal, setUnitModal] = useState<InventoryUnit | null>(null)
+  const [unitDraft, setUnitDraft] = useState<{ status: UnitStatus; note: string }>({ status: 'in_stock', note: '' })
+  const [transferVariantId, setTransferVariantId] = useState<string | null>(null)
+  const [transferDraft, setTransferDraft] = useState({ fromStoreId: '', toStoreId: '', qty: 1, note: '' })
+  const [historyVariantId, setHistoryVariantId] = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
 
-    return state.products.map((product) => {
-      const variants = state.productVariants.filter((variant) => variant.productId === product.id)
-      const variantIdSet = new Set(variants.map((variant) => variant.id))
-      const units = stockScope.filter((unit) => variantIdSet.has(unit.variantId))
-      const countStatus = (status: UnitStatus) => units.filter((unit) => unit.status === status).length
+  useEffect(() => {
+    if (!toast) {
+      return
+    }
+    const timer = window.setTimeout(() => setToast(null), 3400)
+    return () => window.clearTimeout(timer)
+  }, [toast])
 
-      return {
-        product,
-        variants: variants.map((variant) => {
-          const variantUnits = units.filter((unit) => unit.variantId === variant.id)
-          return {
-            variant,
-            inStock: variantUnits.filter((unit) => unit.status === 'in_stock').length,
-            sold: variantUnits.filter((unit) => unit.status === 'sold').length,
-          }
-        }),
-        inStock: countStatus('in_stock'),
-        sold: countStatus('sold'),
+  const productById = useMemo(() => new Map(state.products.map((p) => [p.id, p])), [state.products])
+  const variantById = useMemo(() => new Map(state.productVariants.map((v) => [v.id, v])), [state.productVariants])
+  const categoryById = useMemo(() => new Map(state.categories.map((c) => [c.id, c])), [state.categories])
+  const storeById = useMemo(() => new Map(state.stores.map((s) => [s.id, s])), [state.stores])
+
+  const allStores = storeFilter === 'all'
+  const searchTerm = search.trim().toLowerCase()
+  const searchActive = searchTerm.length > 0
+
+  const storeName = (id: string | null | undefined) => (id ? (storeById.get(id)?.name ?? 'Unknown store') : '')
+  const storeCode = (id: string | null | undefined) => (id ? (storeById.get(id)?.code ?? '?') : '?')
+
+  const variantLabel = (variantId: string) => {
+    const variant = variantById.get(variantId)
+    if (!variant) {
+      return 'this variation'
+    }
+    const product = productById.get(variant.productId)
+    return `${product?.name ?? 'Product'} · ${variant.color} ${variant.size}`
+  }
+
+  // Every variant that has at least one stock record in the current store scope.
+  // "On hand" = count of in_stock units. A variant with records but 0 on hand is
+  // kept (shown as Out of stock); variants with no records at all are hidden.
+  const scopeRows = useMemo<VariantRow[]>(() => {
+    const unitsByVariant = new Map<string, InventoryUnit[]>()
+    for (const unit of state.inventoryUnits) {
+      if (!allStores && unit.storeId !== storeFilter) {
+        continue
       }
+      const list = unitsByVariant.get(unit.variantId) ?? []
+      list.push(unit)
+      unitsByVariant.set(unit.variantId, list)
+    }
+
+    const out: VariantRow[] = []
+    for (const [variantId, units] of unitsByVariant) {
+      const variant = variantById.get(variantId)
+      const product = variant ? productById.get(variant.productId) : undefined
+      if (!variant || !product) {
+        continue
+      }
+      const onHand = units.filter((u) => u.status === 'in_stock').length
+      const perMap = new Map<string, number>()
+      for (const u of units) {
+        if (u.status === 'in_stock') {
+          perMap.set(u.storeId, (perMap.get(u.storeId) ?? 0) + 1)
+        }
+      }
+      out.push({
+        variant,
+        product,
+        onHand,
+        scopeUnits: units,
+        perStore: [...perMap.entries()].map(([storeId, count]) => ({ storeId, count })),
+      })
+    }
+    return out
+  }, [state.inventoryUnits, variantById, productById, allStores, storeFilter])
+
+  // Apply the status + product/SKU/color/size search filters.
+  const filteredRows = useMemo(
+    () =>
+      scopeRows.filter((row) => {
+        if (statusFilter === 'in_stock' && row.onHand === 0) {
+          return false
+        }
+        if (statusFilter === 'out' && row.onHand > 0) {
+          return false
+        }
+        if (searchActive) {
+          const { sku, color, size } = row.variant
+          const haystack = `${row.product.name} ${sku} ${color} ${size}`.toLowerCase()
+          if (!haystack.includes(searchTerm)) {
+            return false
+          }
+        }
+        return true
+      }),
+    [scopeRows, statusFilter, searchActive, searchTerm],
+  )
+
+  // Group rows by product; only products with ≥1 matching stocked variation show.
+  const groups = useMemo<ProductGroup[]>(() => {
+    const rowsByProduct = new Map<string, VariantRow[]>()
+    for (const row of filteredRows) {
+      const list = rowsByProduct.get(row.product.id) ?? []
+      list.push(row)
+      rowsByProduct.set(row.product.id, list)
+    }
+
+    const out: ProductGroup[] = []
+    for (const product of state.products) {
+      const rows = rowsByProduct.get(product.id)
+      if (!rows) {
+        continue
+      }
+      const totalOnHand = rows.reduce((sum, row) => sum + row.onHand, 0)
+      const outCount = rows.filter((row) => row.onHand === 0).length
+      const storeSet = new Set<string>()
+      for (const row of rows) {
+        for (const loc of row.perStore) {
+          storeSet.add(loc.storeId)
+        }
+      }
+      out.push({
+        product,
+        categoryName: categoryById.get(product.categoryId)?.name ?? 'Unassigned',
+        rows,
+        totalOnHand,
+        outCount,
+        storeCount: storeSet.size,
+      })
+    }
+    return out
+  }, [filteredRows, state.products, categoryById])
+
+  const isExpanded = (productId: string) => searchActive || expandedIds.includes(productId)
+
+  const toggleProduct = (productId: string) => {
+    if (searchActive) {
+      return
+    }
+    setExpandedIds((previous) => (previous.includes(productId) ? previous.filter((id) => id !== productId) : [...previous, productId]))
+  }
+
+  const openMenu = (event: MouseEvent<HTMLButtonElement>, variantId: string) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    setMenu({ variantId, x: rect.right, y: rect.bottom })
+  }
+
+  const menuLeft = menu ? Math.max(8, Math.min(menu.x, window.innerWidth - 196)) : 0
+  const menuTop = menu ? menu.y + 8 : 0
+
+  const openAdjust = (variantId: string) => {
+    setMenu(null)
+    setAdjustVariantId(variantId)
+  }
+
+  const openTransfer = (variantId: string) => {
+    const byStore = new Map<string, number>()
+    for (const u of state.inventoryUnits) {
+      if (u.variantId === variantId && u.status === 'in_stock') {
+        byStore.set(u.storeId, (byStore.get(u.storeId) ?? 0) + 1)
+      }
+    }
+    const defaultFrom = !allStores && byStore.has(storeFilter) ? storeFilter : ([...byStore.entries()].find(([, n]) => n > 0)?.[0] ?? '')
+    setMenu(null)
+    setTransferVariantId(variantId)
+    setTransferDraft({
+      fromStoreId: defaultFrom,
+      toStoreId: '',
+      qty: byStore.get(defaultFrom) ?? 1,
+      note: '',
     })
-  }, [state.inventoryUnits, state.productVariants, state.products, storeFilter])
+  }
 
-  const visibleUnits = useMemo(() => {
-    return state.inventoryUnits.filter((unit) => {
-      const matchesStore = storeFilter === 'all' || unit.storeId === storeFilter
-      const matchesStatus = statusFilter === 'all' || unit.status === statusFilter
-      const haystack = `${unit.unitCode} ${getProductName(unit.variantId, state.productVariants, state.products)} ${getVariantName(unit.variantId, state.productVariants)}`.toLowerCase()
-      const matchesSearch = !search.trim() || haystack.includes(search.trim().toLowerCase())
-      return matchesStore && matchesStatus && matchesSearch
+  const openHistory = (variantId: string) => {
+    setMenu(null)
+    setHistoryVariantId(variantId)
+  }
+
+  // --- Single-unit adjust (hidden behind the variant ••• menu) -------------
+  const adjustUnits = useMemo(() => {
+    if (!adjustVariantId) {
+      return []
+    }
+    return state.inventoryUnits
+      .filter((u) => u.variantId === adjustVariantId && (allStores || u.storeId === storeFilter))
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+  }, [adjustVariantId, state.inventoryUnits, allStores, storeFilter])
+
+  const openUnitAdjust = (unit: InventoryUnit) => {
+    setUnitDraft({ status: unit.status, note: '' })
+    setUnitModal(unit)
+  }
+
+  const confirmUnitAdjust = () => {
+    if (!unitModal) {
+      return
+    }
+    const label = unitDraft.status.replace('_', ' ')
+    adjustInventoryUnit(unitModal.id, unitDraft.status, unitDraft.note, 'Admin')
+    setToast(`Adjusted ${unitModal.unitCode || 'stock record'} to ${label}`)
+    setUnitModal(null)
+  }
+
+  // --- Transfer ------------------------------------------------------------
+  const transferStores = useMemo(() => {
+    if (!transferVariantId) {
+      return []
+    }
+    const byStore = new Map<string, number>()
+    for (const u of state.inventoryUnits) {
+      if (u.variantId === transferVariantId && u.status === 'in_stock') {
+        byStore.set(u.storeId, (byStore.get(u.storeId) ?? 0) + 1)
+      }
+    }
+    return [...byStore.entries()]
+      .filter(([, n]) => n > 0)
+      .map(([storeId, count]) => ({ storeId, count }))
+  }, [transferVariantId, state.inventoryUnits])
+
+  const transferToOptions = state.stores.filter((s) => !s.isDeleted && s.id !== transferDraft.fromStoreId)
+
+  const changeTransferFrom = (storeId: string) => {
+    const available = transferStores.find((s) => s.storeId === storeId)?.count ?? 1
+    setTransferDraft((prev) => ({
+      ...prev,
+      fromStoreId: storeId,
+      qty: available,
+      toStoreId: prev.toStoreId === storeId ? '' : prev.toStoreId,
+    }))
+  }
+
+  const confirmTransfer = () => {
+    if (!transferVariantId || !transferDraft.fromStoreId || !transferDraft.toStoreId || transferDraft.fromStoreId === transferDraft.toStoreId) {
+      return
+    }
+    const available = transferStores.find((s) => s.storeId === transferDraft.fromStoreId)?.count ?? 0
+    const qty = Math.min(Math.max(1, Math.floor(transferDraft.qty)), available)
+    if (qty < 1) {
+      return
+    }
+    transferStock({
+      fromStoreId: transferDraft.fromStoreId,
+      toStoreId: transferDraft.toStoreId,
+      items: [{ variantId: transferVariantId, quantity: qty }],
+      note: transferDraft.note,
     })
-  }, [search, state.inventoryUnits, state.productVariants, state.products, statusFilter, storeFilter])
-
-  const totalPages = Math.max(1, Math.ceil(visibleUnits.length / PAGE_SIZE))
-  const currentPage = Math.min(page, totalPages)
-  const paginatedUnits = visibleUnits.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
-
-  const openAdjustment = (unit: InventoryUnit) => {
-    setAdjustUnitId(unit.id)
-    setAdjustDraft({ status: unit.status, note: '', staffName: 'Admin' })
-    setAdjustOpen(true)
+    const toName = storeName(transferDraft.toStoreId)
+    setToast(`Transferred ${qty} unit${qty === 1 ? '' : 's'} to ${toName}`)
+    setTransferVariantId(null)
   }
 
-  const handleSaveAdjustment = () => {
-    if (!adjustUnitId) {
-      return
+  // --- Movement history ----------------------------------------------------
+  const historyMoves = useMemo(() => {
+    if (!historyVariantId) {
+      return []
     }
+    const unitIds = new Set(state.inventoryUnits.filter((u) => u.variantId === historyVariantId).map((u) => u.id))
+    return state.stockMovements
+      .filter((m) => unitIds.has(m.unitId))
+      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  }, [historyVariantId, state.inventoryUnits, state.stockMovements])
 
-    if (!window.confirm('This adjustment will update the stock status and log the movement in the ledger. Continue?')) {
-      return
+  const movementRoute = (fromId: string | null, toId: string | null) => {
+    const from = fromId ? storeName(fromId) : ''
+    const to = toId ? storeName(toId) : ''
+    if (from && to) {
+      return `${from} → ${to}`
     }
-
-    adjustInventoryUnit(adjustUnitId, adjustDraft.status, adjustDraft.note, adjustDraft.staffName)
-    setAdjustOpen(false)
-    setAdjustUnitId('')
+    return to || from
   }
 
-  const handleSaveIntake = () => {
-    if (!intakeDraft.variantId || !intakeDraft.storeId) {
-      return
-    }
-
-    applyIntake({
-      variantId: intakeDraft.variantId,
-      storeId: intakeDraft.storeId,
-      quantity: intakeDraft.quantity,
-      costPriceCents: intakeDraft.costPriceCents,
-      staffName: intakeDraft.staffName,
-    })
-    setIntakeOpen(false)
-  }
-
-  const toggleProductOverview = (productId: string) => {
-    setExpandedProductIds((previous) =>
-      previous.includes(productId) ? previous.filter((id) => id !== productId) : [...previous, productId],
-    )
-  }
-
-  const toggleUnitSelection = (unitId: string) => {
-    setSelectedUnitIds((previous) =>
-      previous.includes(unitId) ? previous.filter((id) => id !== unitId) : [...previous, unitId],
-    )
-  }
-
-  const clearBulkSelection = () => {
-    setBulkMode(false)
-    setBulkMenuOpen(false)
-    setSelectedUnitIds([])
-  }
-
-  const handleBulkStatusApply = () => {
-    if (selectedUnitIds.length === 0) {
-      return
-    }
-
-    const count = selectedUnitIds.length
-    const targetLabel = bulkStatusDraft.status.replace('_', ' ')
-    if (!window.confirm(`Update ${count} selected unit${count === 1 ? '' : 's'} to ${targetLabel}?`)) {
-      return
-    }
-
-    bulkAdjustInventoryUnits(selectedUnitIds, bulkStatusDraft.status, bulkStatusDraft.note, bulkStatusDraft.staffName)
-    clearBulkSelection()
+  const unitCode = (unit: InventoryUnit, index: number) => {
+    const variant = variantById.get(unit.variantId)
+    return unit.unitCode || `${variant?.sku ?? 'UNIT'}#${index + 1}`
   }
 
   return (
     <div className="admin-page inventory-page">
-      <PageHeader
-        title="Inventory"
-        subtitle="Individual stock records across each boutique. Filter by store and status."
-      />
+      <PageHeader title="Inventory" subtitle="Track product variations and stock across each boutique." />
 
-      <section className="admin-panel inventory-overview" aria-labelledby="inventory-overview-title">
-        <div className="panel-header-row inventory-overview-heading">
-          <div>
-            <h3 id="inventory-overview-title">Catalog stock overview</h3>
-            <p>All catalog products. Counts reflect the selected store.</p>
-          </div>
+      <div className="manager-toolbar inventory-toolbar">
+        <div className="search-box inventory-search">
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search product, color or SKU"
+            aria-label="Search inventory by product, color or SKU"
+          />
         </div>
-        <div className="catalog-stock-list">
-          {catalogStockOverview.map(({ product, variants, inStock, sold }) => {
-            const isExpanded = expandedProductIds.includes(product.id)
-            const category = state.categories.find((item) => item.id === product.categoryId)
+        <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)} className="admin-select" aria-label="Filter by store">
+          <option value="all">All stores</option>
+          {state.stores.map((store) => (
+            <option key={store.id} value={store.id}>
+              {store.isDeleted ? `Deleted (${store.name})` : store.name}
+            </option>
+          ))}
+        </select>
+        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StockScope)} className="admin-select" aria-label="Filter by stock status">
+          <option value="all">All statuses</option>
+          <option value="in_stock">In stock</option>
+          <option value="out">Out of stock</option>
+        </select>
+        <button type="button" className="primary-button inventory-add" onClick={() => navigate('/admin/products')} aria-label="Add stock on the Products page">
+          <Plus size={16} />
+          Add stock
+        </button>
+      </div>
 
-            return (
-              <div key={product.id} className={`catalog-stock-item ${isExpanded ? 'expanded' : ''}`}>
-                <button
-                  type="button"
-                  className="catalog-stock-row"
-                  onClick={() => toggleProductOverview(product.id)}
-                  aria-expanded={isExpanded}
-                  aria-controls={`catalog-stock-variants-${product.id}`}
-                >
-                  <span className="catalog-stock-product">
-                    <strong>{product.name}</strong>
-                    <small>{category?.name ?? 'Unassigned'} · {variants.length} variation{variants.length === 1 ? '' : 's'}</small>
-                  </span>
-                  <span className="catalog-stock-counts">
-                    <span><strong>{inStock}</strong> in stock</span>
-                    <span><strong>{sold}</strong> sold</span>
-                  </span>
-                  <ChevronDown className="catalog-stock-chevron" size={18} aria-hidden="true" />
-                </button>
-
-                {isExpanded ? (
-                  <div id={`catalog-stock-variants-${product.id}`} className="catalog-variant-list">
-                    {variants.length > 0 ? variants.map(({ variant, inStock: variantInStock, sold: variantSold }) => (
-                      <div key={variant.id} className="catalog-variant-row">
-                        <div>
-                          <strong>{variant.color} {variant.size}</strong>
-                          <small>{variant.sku}</small>
-                        </div>
-                        <div className="catalog-stock-counts">
-                          <span><strong>{variantInStock}</strong> in stock</span>
-                          <span><strong>{variantSold}</strong> sold</span>
-                        </div>
-                      </div>
-                    )) : (
-                      <p className="catalog-variant-empty">No variations have been added.</p>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            )
-          })}
+      <section className="admin-panel inventory-overview" aria-label="Catalog stock by product">
+        <div className="inventory-note">
+          {groups.length > 0 ? (
+            <>
+              <strong>{groups.length}</strong> product{groups.length === 1 ? '' : 's'} ·{' '}
+              <strong>{filteredRows.length}</strong> stocked variation{filteredRows.length === 1 ? '' : 's'} ·{' '}
+              <strong>{groups.reduce((sum, g) => sum + g.totalOnHand, 0)}</strong> on hand
+              {!allStores && state.stores.length ? ` at ${storeName(storeFilter)}` : ''}
+            </>
+          ) : (
+            'Variations with no stock records stay hidden here — add stock from the Products page.'
+          )}
         </div>
-      </section>
 
-      <>
-          <div className="manager-toolbar">
-            <div className="toolbar-left">
-              <select value={storeFilter} onChange={(event) => { setStoreFilter(event.target.value); setPage(1) }} className="admin-select">
-                <option value="all">All stores</option>
-                {state.stores.map((store) => (
-                  <option key={store.id} value={store.id}>
-                    {store.name}
-                  </option>
-                ))}
-              </select>
-              <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1) }} className="admin-select">
-                <option value="all">All statuses</option>
-                <option value="in_stock">In stock</option>
-                <option value="sold">Sold</option>
-                <option value="in_transit">In transit</option>
-              </select>
-            </div>
-            <div className="toolbar-right">
-              <div className="search-box">
-                <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search unit or SKU" aria-label="Search units" />
-              </div>
-              <div className="bulk-toolbar">
-                {!bulkMode ? (
-                  <>
-                    <button type="button" className="secondary-button bulk-mode-toggle desktop-only" onClick={() => setBulkMode(true)} aria-label="Select inventory units for bulk status updates">
-                      Select
-                    </button>
-                    <button type="button" className="secondary-button bulk-mode-toggle mobile-only" onClick={() => setBulkMenuOpen((previous) => !previous)} aria-label="Toggle bulk inventory actions">
-                      {bulkMenuOpen ? 'Close' : 'Bulk'}
-                    </button>
-                    {bulkMenuOpen ? (
-                      <button type="button" className="secondary-button bulk-mode-toggle mobile-menu" onClick={() => { setBulkMenuOpen(false); setBulkMode(true) }} aria-label="Select inventory units for bulk status updates">
-                        Select
-                      </button>
-                    ) : null}
-                  </>
-                ) : (
-                  <button type="button" className="secondary-button bulk-mode-toggle" onClick={clearBulkSelection} aria-label="Done bulk inventory selection">
-                    Done
+        {groups.length > 0 ? (
+          <div className="inventory-accordion">
+            {groups.map((group) => {
+              const expanded = isExpanded(group.product.id)
+              return (
+                <div key={group.product.id} className={`inventory-product ${expanded ? 'expanded' : ''}`}>
+                  <button
+                    type="button"
+                    className="inventory-product-row"
+                    onClick={() => toggleProduct(group.product.id)}
+                    aria-expanded={expanded}
+                    aria-controls={`inventory-rows-${group.product.id}`}
+                  >
+                    <span className="inv-product-main">
+                      <strong>{group.product.name}</strong>
+                      <small>
+                        {group.categoryName} · {group.rows.length} variation{group.rows.length === 1 ? '' : 's'}
+                        {allStores ? ` · ${group.storeCount} store${group.storeCount === 1 ? '' : 's'}` : ''}
+                      </small>
+                    </span>
+                    <span className="inv-product-stats">
+                      {group.outCount > 0 ? <span className="inv-outcount">{group.outCount} out of stock</span> : null}
+                      <span className="inv-onhand">
+                        <strong>{group.totalOnHand}</strong>
+                        <small>On hand</small>
+                      </span>
+                    </span>
+                    <ChevronDown className="inv-chevron" size={18} aria-hidden="true" />
                   </button>
-                )}
-              </div>
-              <button type="button" className="primary-button" onClick={() => setIntakeOpen(true)} aria-label="Add new stock">
+
+                  {expanded ? (
+                    <div id={`inventory-rows-${group.product.id}`} className="inventory-table-wrap">
+                      <table className="inventory-table">
+                        <thead>
+                          <tr>
+                            <th className="col-sku">SKU</th>
+                            <th className="col-color">Color</th>
+                            <th className="col-size">Size</th>
+                            {allStores ? <th className="col-location">Location</th> : null}
+                            <th className="col-qty">On hand</th>
+                            <th className="col-status">Status</th>
+                            <th className="col-actions"><span className="sr-only">Actions</span></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {group.rows.map((row) => (
+                            <tr key={row.variant.id} className={row.onHand === 0 ? 'out' : ''}>
+                              <td className="col-sku inv-sku">{row.variant.sku || '—'}</td>
+                              <td className="col-color">{row.variant.color}</td>
+                              <td className="col-size">{row.variant.size}</td>
+                              {allStores ? (
+                                <td className="col-location">
+                                  {row.perStore.length > 0 ? (
+                                    <span className="inv-loc-list">
+                                      {row.perStore.map((loc) => (
+                                        <span key={loc.storeId} className="inv-loc-chip" title={storeName(loc.storeId)}>
+                                          {storeCode(loc.storeId)} <b>{loc.count}</b>
+                                        </span>
+                                      ))}
+                                    </span>
+                                  ) : (
+                                    <span className="inv-loc-empty">—</span>
+                                  )}
+                                </td>
+                              ) : null}
+                              <td className="col-qty">
+                                <span className="inv-qty">{row.onHand}</span>
+                              </td>
+                              <td className="col-status">
+                                <StatusBadge label={row.onHand > 0 ? 'In stock' : 'Out of stock'} tone={row.onHand > 0 ? 'success' : 'neutral'} />
+                              </td>
+                              <td className="col-actions">
+                                <button
+                                  type="button"
+                                  className="icon-button plain inv-kebab"
+                                  onClick={(event) => openMenu(event, row.variant.id)}
+                                  aria-label={`Actions for ${row.variant.sku || variantLabel(row.variant.id)}`}
+                                  aria-haspopup="menu"
+                                >
+                                  <MoreHorizontal size={18} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <EmptyState
+            title={searchActive || statusFilter !== 'all' ? 'No matching inventory' : 'No inventory yet'}
+            description={
+              searchActive || statusFilter !== 'all'
+                ? 'Try another search, status, or store to see stock.'
+                : 'Add stock from the Products page and it will appear here, grouped by product.'
+            }
+            action={
+              <button type="button" className="primary-button" onClick={() => navigate('/admin/products')}>
                 <Plus size={16} />
                 Add stock
               </button>
-            </div>
+            }
+          />
+        )}
+      </section>
+
+      {menu ? (
+        <>
+          <div className="kebab-backdrop" onClick={() => setMenu(null)} aria-hidden="true" />
+          <div className="kebab-menu" style={{ left: menuLeft, top: menuTop }} role="menu" aria-label="Variant actions">
+            <button type="button" role="menuitem" onClick={() => openAdjust(menu.variantId)}>
+              <SlidersHorizontal size={16} />
+              Adjust stock
+            </button>
+            <button type="button" role="menuitem" onClick={() => openTransfer(menu.variantId)}>
+              <ArrowRightLeft size={16} />
+              Transfer
+            </button>
+            <button type="button" role="menuitem" onClick={() => openHistory(menu.variantId)}>
+              <History size={16} />
+              Movement history
+            </button>
           </div>
+        </>
+      ) : null}
 
-          {bulkMode ? (
-            <div className="bulk-selection-bar" role="toolbar" aria-label="Bulk inventory actions">
-              <span className="selection-count">{selectedUnitIds.length} selected</span>
-              <select
-                value={bulkStatusDraft.status}
-                onChange={(event) => setBulkStatusDraft((previous) => ({ ...previous, status: event.target.value as UnitStatus }))}
-                className="admin-select bulk-status-select"
-                aria-label="Choose the status to apply to selected units"
-              >
-                <option value="in_stock">In stock</option>
-                <option value="sold">Sold</option>
-                <option value="in_transit">In transit</option>
-              </select>
-              <input
-                value={bulkStatusDraft.note}
-                onChange={(event) => setBulkStatusDraft((previous) => ({ ...previous, note: event.target.value }))}
-                className="admin-input bulk-text-input"
-                placeholder="Adjustment note"
-                aria-label="Bulk inventory adjustment note"
-              />
-              <input
-                value={bulkStatusDraft.staffName}
-                onChange={(event) => setBulkStatusDraft((previous) => ({ ...previous, staffName: event.target.value }))}
-                className="admin-input bulk-text-input"
-                placeholder="Staff name"
-                aria-label="Bulk inventory adjustment staff name"
-              />
-              <button type="button" className="primary-button bulk-action-button" onClick={handleBulkStatusApply} aria-label="Apply the selected status to the chosen inventory units" disabled={selectedUnitIds.length === 0}>
-                Apply status
-              </button>
-              <button type="button" className="secondary-button bulk-action-button" onClick={() => setSelectedUnitIds([])} aria-label="Clear inventory unit selections">
-                Clear
-              </button>
-            </div>
-          ) : null}
-
-          <div className="record-stack compact">
-            {visibleUnits.length > 0 ? (
-              paginatedUnits.map((unit) => {
-                const variantName = getVariantName(unit.variantId, state.productVariants)
-                const productName = getProductName(unit.variantId, state.productVariants, state.products)
-                const store = state.stores.find((entry) => entry.id === unit.storeId)
-                const isSelected = selectedUnitIds.includes(unit.id)
-
-                return (
-                  <div key={unit.id} className={`record-card stock-row ${isSelected ? 'bulk-selected' : ''}`}>
-                    {bulkMode ? (
-                      <button
-                        type="button"
-                        className={`bulk-select-button ${isSelected ? 'selected' : ''}`}
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          toggleUnitSelection(unit.id)
-                        }}
-                        aria-label={isSelected ? `Clear selection for ${unit.unitCode}` : `Select ${unit.unitCode}`}
-                        aria-pressed={isSelected}
-                      >
-                        {isSelected ? '✓' : ''}
-                      </button>
-                    ) : null}
-                    <div className="record-main">
-                      <strong>{unit.unitCode}</strong>
-                      <small>
-                        {productName} · {variantName}
-                      </small>
-                    </div>
-                    <div className="record-side column align-end">
-                      <span>{store?.isDeleted ? `Deleted store (${store.name})` : store?.name ?? 'Unknown store'}</span>
-                      <StatusBadge label={unit.status === 'in_stock' ? 'In stock' : unit.status === 'in_transit' ? 'In transit' : 'Sold'} tone={unit.status === 'in_stock' ? 'success' : unit.status === 'in_transit' ? 'info' : 'neutral'} />
-                    </div>
-                    <div className="record-actions compact-actions">
-                      <span>{formatPeso(unit.costPriceCents)}</span>
-                      <button type="button" className="text-button" onClick={() => openAdjustment(unit)} aria-label={`Adjust stock status for ${unit.unitCode}`}>
-                        Adjust
-                      </button>
-                    </div>
-                  </div>
-                )
-              })
-            ) : (
-              <EmptyState title="No units found" description="Try another status or store filter to see more stock." />
-            )}
-          </div>
-
-          {visibleUnits.length > PAGE_SIZE ? (
-            <nav className="pagination-controls" aria-label="Inventory pages">
-              <span>
-                Showing {(currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, visibleUnits.length)} of {visibleUnits.length} units
-              </span>
-              <div className="pagination-actions">
-                <button type="button" className="secondary-button" onClick={() => setPage((previous) => Math.max(1, previous - 1))} disabled={currentPage === 1}>
-                  Previous
-                </button>
-                <span aria-current="page">Page {currentPage} of {totalPages}</span>
-                <button type="button" className="secondary-button" onClick={() => setPage((previous) => Math.min(totalPages, previous + 1))} disabled={currentPage === totalPages}>
-                  Next
+      {/* Adjust stock — lists the variation's stock records in the current store scope. */}
+      <Drawer
+        open={adjustVariantId !== null}
+        size="panel"
+        title="Adjust stock"
+        subtitle={adjustVariantId ? variantLabel(adjustVariantId) : undefined}
+        onClose={() => setAdjustVariantId(null)}
+      >
+        {adjustUnits.length > 0 ? (
+          <div className="unit-adjust-list">
+            <p className="form-hint">Individual stock records for this variation{allStores ? '' : ` at ${storeName(storeFilter)}`}. Adjust a record to log a status change in the ledger.</p>
+            {adjustUnits.map((unit, index) => (
+              <div key={unit.id} className="unit-adjust-row">
+                <div className="record-main">
+                  <strong>{unitCode(unit, index)}</strong>
+                  <small>{storeName(unit.storeId)}</small>
+                </div>
+                <StatusBadge
+                  label={unit.status === 'in_stock' ? 'In stock' : unit.status === 'in_transit' ? 'In transit' : 'Sold'}
+                  tone={unit.status === 'in_stock' ? 'success' : unit.status === 'in_transit' ? 'info' : 'neutral'}
+                />
+                <button type="button" className="text-button" onClick={() => openUnitAdjust(unit)}>
+                  Adjust
                 </button>
               </div>
-            </nav>
-          ) : null}
-      </>
-
-      <Drawer
-        open={intakeOpen}
-        size="panel"
-        title="Add stock"
-        subtitle="Create individual stock records and log their receipt."
-        onClose={() => setIntakeOpen(false)}
-        footer={
-          <div className="modal-footer-actions">
-            <button type="button" className="secondary-button" onClick={() => setIntakeOpen(false)}>
-              Cancel
-            </button>
-            <button type="button" className="primary-button" onClick={handleSaveIntake}>
-              Add stock
-            </button>
+            ))}
           </div>
-        }
-      >
-        <div className="form-grid">
-          <Field label="Variant">
-            <select value={intakeDraft.variantId} onChange={(event) => setIntakeDraft((previous) => ({ ...previous, variantId: event.target.value }))} className="admin-select">
-              {state.productVariants.map((variant) => (
-                <option key={variant.id} value={variant.id}>
-                  {getProductName(variant.id, state.productVariants, state.products)} · {variant.color} {variant.size}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Store">
-            <select value={intakeDraft.storeId} onChange={(event) => setIntakeDraft((previous) => ({ ...previous, storeId: event.target.value }))} className="admin-select">
-              {state.stores.map((store) => (
-                <option key={store.id} value={store.id}>
-                  {store.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Quantity">
-            <input type="number" min="1" value={intakeDraft.quantity} onChange={(event) => setIntakeDraft((previous) => ({ ...previous, quantity: Number(event.target.value) || 1 }))} className="admin-input" />
-          </Field>
-          <Field label="Cost per unit">
-            <input type="number" min="0" value={intakeDraft.costPriceCents / 100} onChange={(event) => setIntakeDraft((previous) => ({ ...previous, costPriceCents: Math.round(Number(event.target.value || 0) * 100) }))} className="admin-input" />
-          </Field>
-          <Field label="Staff name">
-            <input value={intakeDraft.staffName} onChange={(event) => setIntakeDraft((previous) => ({ ...previous, staffName: event.target.value }))} className="admin-input" placeholder="Admin or receiving staff" />
-          </Field>
-        </div>
+        ) : (
+          <EmptyState title="No records here" description="This variation has no stock records in the selected store." />
+        )}
       </Drawer>
 
+      {/* Single-record status adjustment. */}
       <Drawer
-        open={adjustOpen}
+        open={unitModal !== null}
         size="sheet"
-        title="Adjust unit status"
-        subtitle="Log a manual change to the physical record."
-        onClose={() => setAdjustOpen(false)}
+        title="Adjust stock record"
+        subtitle={unitModal ? `${unitCode(unitModal, 0)} · ${storeName(unitModal.storeId)}` : undefined}
+        onClose={() => setUnitModal(null)}
         footer={
           <div className="modal-footer-actions">
-            <button type="button" className="secondary-button" onClick={() => setAdjustOpen(false)}>
+            <button type="button" className="secondary-button" onClick={() => setUnitModal(null)}>
               Cancel
             </button>
-            <button type="button" className="primary-button" onClick={handleSaveAdjustment}>
+            <button type="button" className="primary-button" onClick={confirmUnitAdjust}>
               Confirm adjustment
             </button>
           </div>
@@ -451,20 +555,111 @@ export default function Inventory() {
       >
         <div className="form-grid">
           <Field label="Status">
-            <select value={adjustDraft.status} onChange={(event) => setAdjustDraft((previous) => ({ ...previous, status: event.target.value as typeof previous.status }))} className="admin-select">
+            <select value={unitDraft.status} onChange={(event) => setUnitDraft((prev) => ({ ...prev, status: event.target.value as UnitStatus }))} className="admin-select">
               <option value="in_stock">In stock</option>
               <option value="sold">Sold</option>
               <option value="in_transit">In transit</option>
             </select>
           </Field>
           <Field label="Note">
-            <textarea value={adjustDraft.note} onChange={(event) => setAdjustDraft((previous) => ({ ...previous, note: event.target.value }))} className="admin-textarea" rows={4} placeholder="Explain the reason for the adjustment" />
-          </Field>
-          <Field label="Staff name">
-            <input value={adjustDraft.staffName} onChange={(event) => setAdjustDraft((previous) => ({ ...previous, staffName: event.target.value }))} className="admin-input" />
+            <textarea value={unitDraft.note} onChange={(event) => setUnitDraft((prev) => ({ ...prev, note: event.target.value }))} className="admin-textarea" rows={3} placeholder="Explain the reason for the adjustment" />
           </Field>
         </div>
       </Drawer>
+
+      {/* Transfer between boutiques. */}
+      <Drawer
+        open={transferVariantId !== null}
+        size="sheet"
+        title="Transfer stock"
+        subtitle={transferVariantId ? variantLabel(transferVariantId) : undefined}
+        onClose={() => setTransferVariantId(null)}
+        footer={
+          <div className="modal-footer-actions">
+            <button type="button" className="secondary-button" onClick={() => setTransferVariantId(null)}>
+              Cancel
+            </button>
+            <button type="button" className="primary-button" onClick={confirmTransfer} disabled={!transferDraft.fromStoreId || !transferDraft.toStoreId || transferDraft.fromStoreId === transferDraft.toStoreId}>
+              Transfer
+            </button>
+          </div>
+        }
+      >
+        {transferStores.length > 0 ? (
+          <div className="form-grid">
+            <Field label="From store">
+              <select value={transferDraft.fromStoreId} onChange={(event) => changeTransferFrom(event.target.value)} className="admin-select">
+                {transferStores.map((s) => (
+                  <option key={s.storeId} value={s.storeId}>
+                    {storeName(s.storeId)} ({s.count} on hand)
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Quantity">
+              <input
+                type="number"
+                min="1"
+                max={transferStores.find((s) => s.storeId === transferDraft.fromStoreId)?.count ?? 1}
+                value={transferDraft.qty}
+                onChange={(event) => setTransferDraft((prev) => ({ ...prev, qty: Number(event.target.value) || 1 }))}
+                className="admin-input"
+              />
+            </Field>
+            <Field label="To store">
+              <select value={transferDraft.toStoreId} onChange={(event) => setTransferDraft((prev) => ({ ...prev, toStoreId: event.target.value }))} className="admin-select">
+                <option value="" disabled>
+                  Choose destination…
+                </option>
+                {transferToOptions.map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Note" hint="Optional. Logged with the transfer.">
+              <input value={transferDraft.note} onChange={(event) => setTransferDraft((prev) => ({ ...prev, note: event.target.value }))} className="admin-input" placeholder="Reason for the transfer" />
+            </Field>
+          </div>
+        ) : (
+          <EmptyState title="Nothing to transfer" description="This variation has no in-stock units to move. Add stock first." />
+        )}
+      </Drawer>
+
+      {/* Movement history. */}
+      <Drawer
+        open={historyVariantId !== null}
+        size="panel"
+        title="Movement history"
+        subtitle={historyVariantId ? variantLabel(historyVariantId) : undefined}
+        onClose={() => setHistoryVariantId(null)}
+      >
+        {historyMoves.length > 0 ? (
+          <div className="movement-list">
+            {historyMoves.map((move) => {
+              const route = movementRoute(move.fromStoreId, move.toStoreId)
+              return (
+                <div key={move.id} className="movement-row">
+                  <div className="movement-head">
+                    <span className={`status-pill move-kind ${move.kind}`}>{KIND_LABELS[move.kind] ?? move.kind}</span>
+                    <span className="movement-date">{fmtDateTime(move.createdAt)}</span>
+                  </div>
+                  {route ? <p className="movement-route">{route}</p> : null}
+                  <div className="movement-meta">
+                    {move.staffName ? <span>{move.staffName}</span> : null}
+                    {move.note ? <span className="movement-note">{move.note}</span> : null}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        ) : (
+          <EmptyState title="No movements yet" description="Stock additions, transfers, and adjustments for this variation will appear here." />
+        )}
+      </Drawer>
+
+      {toast ? <Toast message={toast} onClose={() => setToast(null)} /> : null}
     </div>
   )
 }
