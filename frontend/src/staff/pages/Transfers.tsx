@@ -358,7 +358,7 @@ export default function Transfers() {
         Pieces move from <strong>{myStore}</strong> to the store you pick below.
       </p>
       <div className="option-row transfer-store-options">
-        {stores.map((s) => (
+        {stores.filter((s) => s.code !== myStore).map((s) => (
           <motion.button
             type="button"
             key={s.id}

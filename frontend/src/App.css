@@ -3538,6 +3538,10 @@
 /* Quiet 12px type pill */
 .activity-badge {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 132px;
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
@@ -3545,6 +3549,8 @@
   border-radius: 999px;
   letter-spacing: 0.02em;
   white-space: nowrap;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .badge-sale { background: #e7efe2; color: #4f6b41; }       /* pale green */
