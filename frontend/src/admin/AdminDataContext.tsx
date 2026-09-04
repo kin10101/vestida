@@ -75,6 +75,14 @@ const VALID_UNIT_STATUS = new Set<UnitStatus>(['in_stock', 'sold', 'in_transit']
 // the same normalization the old localStorage loader used.
 function normalizeState(raw: unknown): AdminState {
   const r = (raw ?? {}) as Partial<AdminState>
+  const productVariants = Array.isArray(r.productVariants) ? r.productVariants : []
+  const variantsByProduct = new Map<string, ProductVariant[]>()
+  productVariants.forEach((variant) => {
+    const productVariantsForProduct = variantsByProduct.get(variant.productId) ?? []
+    productVariantsForProduct.push(variant)
+    variantsByProduct.set(variant.productId, productVariantsForProduct)
+  })
+
   return {
     stores: Array.isArray(r.stores) ? r.stores.map((store) => ({ ...store, isDeleted: (store as Store).isDeleted ?? false })) : [],
     categories: Array.isArray(r.categories) ? r.categories : [],
@@ -82,13 +90,19 @@ function normalizeState(raw: unknown): AdminState {
       ? (r.products as Product[]).map((product) => ({
           ...product,
           skuPrefix: product.skuPrefix ?? '',
-          colors: product.colors ?? [],
-          sizes: product.sizes ?? [],
+          // Older deployed admin_get_state functions omit product-level matrix
+          // fields even though they still return the concrete variant rows.
+          colors: product.colors?.length
+            ? product.colors
+            : [...new Set((variantsByProduct.get(product.id) ?? []).map((variant) => variant.color))],
+          sizes: product.sizes?.length
+            ? product.sizes
+            : [...new Set((variantsByProduct.get(product.id) ?? []).map((variant) => variant.size))],
           costPriceCents: product.costPriceCents ?? 0,
           regularPriceCents: product.regularPriceCents ?? 0,
         }))
       : [],
-    productVariants: Array.isArray(r.productVariants) ? r.productVariants : [],
+    productVariants,
     inventoryUnits: Array.isArray(r.inventoryUnits)
       ? r.inventoryUnits.map((unit) => ({ ...unit, status: VALID_UNIT_STATUS.has(unit.status) ? unit.status : 'in_stock' }))
       : [],
@@ -407,4 +421,3 @@ export function useAdminData() {
 
   return context
 }
-

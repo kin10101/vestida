@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ArrowUpRight, ChevronDown, MapPin, TrendingUp, Trophy, Warehouse, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAdminData } from '../AdminDataContext'
@@ -49,7 +49,7 @@ export default function Dashboard() {
   const { state } = useAdminData()
   const navigate = useNavigate()
   const [selectedStore, setSelectedStore] = useState('all')
-  const [range, setRange] = useState<RangeKey>('day')
+  const [range, setRange] = useState<RangeKey>('week')
   const [chartExpanded, setChartExpanded] = useState(false)
   const [chartActive, setChartActive] = useState<ActivePoint | null>(null)
 

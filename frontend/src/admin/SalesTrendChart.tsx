@@ -212,7 +212,7 @@ export default function SalesTrendChart({
         {series.map((s) => (
           <span key={s.store.id} className="chart-legend-item">
             <span className="chart-legend-dot" style={{ background: s.color }} />
-            {s.store.name}
+            {s.store.code}
           </span>
         ))}
       </div>
