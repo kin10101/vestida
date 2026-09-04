@@ -364,9 +364,6 @@ export default function Products() {
     if (selectedProductIds.length === 0) {
       return
     }
-    if (!nextActive && !window.confirm(`Deactivate ${selectedProductIds.length} selected product${selectedProductIds.length === 1 ? '' : 's'}?`)) {
-      return
-    }
     bulkToggleProductActive(selectedProductIds, nextActive)
     clearBulkSelection()
   }
