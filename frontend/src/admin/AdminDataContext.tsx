@@ -32,6 +32,7 @@ export interface AdminDataContextValue {
   upsertProduct: (product: Product) => Promise<void>
   toggleProductActive: (id: string) => Promise<void>
   bulkToggleProductActive: (ids: string[], isActive: boolean) => Promise<void>
+  deleteProducts: (ids: string[], force?: boolean) => Promise<{ ok: boolean; reason?: string }>
   upsertVariant: (variant: ProductVariant) => Promise<void>
   toggleVariantActive: (id: string) => void
   upsertStore: (store: Store) => Promise<void>
@@ -227,6 +228,23 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
     toggleProductActive: async (id) => {
       const product = state.products.find((item) => item.id === id)
       await persist(() => apiRpc('admin_toggle_products_active', { p_ids: [id], p_is_active: !product?.isActive }))
+    },
+    deleteProducts: async (ids, force = false) => {
+      try {
+        const res = await apiRpc<{ deleted?: boolean; reason?: string; count?: number }>(
+          'admin_delete_products',
+          { p_ids: ids, p_force: force },
+        )
+        if (res && res.deleted) {
+          await refresh()
+          return { ok: true }
+        }
+        return { ok: false, reason: res?.reason ?? 'blocked' }
+      } catch (err) {
+        console.error('[admin] delete products failed', err)
+        setError(err instanceof Error ? err.message : 'Product delete failed')
+        return { ok: false, reason: 'error' }
+      }
     },
     bulkToggleProductActive: async (ids, isActive) => {
       await persist(() => apiRpc('admin_toggle_products_active', { p_ids: ids, p_is_active: isActive }))

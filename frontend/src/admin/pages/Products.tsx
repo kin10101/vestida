@@ -43,12 +43,14 @@ const buildSku = (prefix: string, color: string, size: string) =>
   `${prefix.trim().toUpperCase()}-${color.trim().toUpperCase().slice(0, 3)}-${size.trim().toUpperCase()}`
 
 export default function Products() {
-  const { state, upsertCategory, deleteCategory, upsertProduct, toggleProductActive, bulkToggleProductActive, applyIntake } = useAdminData()
+  const { state, upsertCategory, deleteCategory, upsertProduct, toggleProductActive, bulkToggleProductActive, deleteProducts, applyIntake } = useAdminData()
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [selectedProductId, setSelectedProductId] = useState<string | null>(state.products[0]?.id ?? null)
   const [bulkMode, setBulkMode] = useState(false)
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
+  const [deleteWarnOpen, setDeleteWarnOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [productModalOpen, setProductModalOpen] = useState(false)
   const [categoryModalOpen, setCategoryModalOpen] = useState(false)
   const [categoryDraft, setCategoryDraft] = useState({ id: '', name: '' })
@@ -368,6 +370,62 @@ export default function Products() {
     bulkToggleProductActive(selectedProductIds, nextActive)
     clearBulkSelection()
   }
+
+  // --- Bulk delete -----------------------------------------------------
+  const handleBulkDelete = async () => {
+    if (selectedProductIds.length === 0) {
+      return
+    }
+    const ids = [...selectedProductIds]
+    setDeleting(true)
+    const result = await deleteProducts(ids, false)
+    setDeleting(false)
+    if (result.ok) {
+      setToast(`Deleted ${ids.length} product${ids.length === 1 ? '' : 's'}`)
+      clearBulkSelection()
+    } else if (result.reason === 'has_stock') {
+      setDeleteWarnOpen(true)
+    }
+  }
+
+  const confirmBulkDelete = async () => {
+    const ids = [...selectedProductIds]
+    setDeleteWarnOpen(false)
+    setDeleting(true)
+    const result = await deleteProducts(ids, true)
+    setDeleting(false)
+    if (result.ok) {
+      setToast(`Deleted ${ids.length} product${ids.length === 1 ? '' : 's'}`)
+      clearBulkSelection()
+    }
+  }
+
+  const deleteWarningDrawer = (
+    <Drawer
+      open={deleteWarnOpen}
+      size="sheet"
+      title={selectedProductIds.length === 1 ? 'This product has items in stock' : 'Selected products have items in stock'}
+      subtitle="These products are still carrying stock."
+      onClose={() => setDeleteWarnOpen(false)}
+      footer={
+        <div className="modal-footer-actions">
+          <button type="button" className="secondary-button" onClick={() => setDeleteWarnOpen(false)} disabled={deleting}>
+            Cancel
+          </button>
+          <button type="button" className="primary-button danger-button" onClick={() => void confirmBulkDelete()} disabled={deleting}>
+            {deleting ? 'Deleting…' : 'Force delete'}
+          </button>
+        </div>
+      }
+    >
+      <p className="delete-warning-copy">
+        {selectedProductIds.length === 1
+          ? 'This product has items in stock across your stores. Deleting it also removes its current shelf stock and unsold variants.'
+          : `${selectedProductIds.length} selected products have items in stock across your stores. Deleting them also removes their current shelf stock and unsold variants.`}
+      </p>
+      <p className="delete-warning-copy muted">Previously sold variants and their sales history are kept in the database.</p>
+    </Drawer>
+  )
 
   const categoryDrawer = (
     <Drawer
@@ -758,6 +816,9 @@ export default function Products() {
               <button type="button" className="secondary-button bulk-action-button" onClick={() => applyBulkProductState(false)} aria-label="Deactivate selected products" disabled={selectedProductIds.length === 0}>
                 Deactivate
               </button>
+              <button type="button" className="secondary-button bulk-action-button bulk-delete-button" onClick={() => void handleBulkDelete()} aria-label="Delete selected products" disabled={selectedProductIds.length === 0 || deleting}>
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
               <button type="button" className="secondary-button bulk-action-button" onClick={() => setSelectedProductIds([])} aria-label="Clear product selections">
                 Clear
               </button>
@@ -945,6 +1006,7 @@ export default function Products() {
       {categoryDrawer}
       {productDrawer}
       {stockDrawer}
+      {deleteWarningDrawer}
       {toast ? <Toast message={toast} onClose={() => setToast(null)} /> : null}
     </div>
   )

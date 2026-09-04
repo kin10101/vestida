@@ -5,6 +5,8 @@ import { ArrowRightLeft, ChevronDown, History, MoreHorizontal, Plus, SlidersHori
 import { useAdminData } from '../AdminDataContext'
 import type { InventoryUnit, Product, ProductVariant, UnitStatus } from '../data'
 import { Drawer, EmptyState, Field, PageHeader, StatusBadge, Toast } from '../ui'
+import ExportMenu from '../ExportMenu'
+import type { ExportRow } from '../ExportMenu'
 
 type StockScope = 'all' | 'in_stock' | 'out'
 
@@ -31,6 +33,12 @@ const KIND_LABELS: Record<string, string> = {
   transferred_in: 'Transferred in',
   sold: 'Sold',
   adjustment: 'Adjusted',
+}
+
+const UNIT_STATUS_LABEL: Record<UnitStatus, string> = {
+  in_stock: 'In stock',
+  sold: 'Sold',
+  in_transit: 'In transit',
 }
 
 const fmtDateTime = (value: string) => {
@@ -327,6 +335,28 @@ export default function Inventory() {
     return unit.unitCode || `${variant?.sku ?? 'UNIT'}#${index + 1}`
   }
 
+  // Every individual inventory unit record (across all stores), for export.
+  const exportUnitRows = useMemo<ExportRow[]>(() => state.inventoryUnits.map((unit) => {
+    const variant = variantById.get(unit.variantId)
+    const product = variant ? productById.get(variant.productId) : undefined
+    const storeName = unit.storeId ? (storeById.get(unit.storeId)?.name ?? 'Unknown store') : ''
+    return {
+      date: unit.createdAt,
+      values: [
+        unit.unitCode || unit.id,
+        product?.name ?? 'Unknown product',
+        variant ? [variant.color, variant.size].filter(Boolean).join(' ') : '—',
+        variant?.sku ?? '—',
+        storeName || '—',
+        UNIT_STATUS_LABEL[unit.status] ?? unit.status,
+        unit.costPriceCents / 100,
+        fmtDateTime(unit.createdAt),
+      ],
+    }
+  }), [state.inventoryUnits, variantById, productById, storeById])
+
+  const INVENTORY_EXPORT_COLUMNS = ['Unit code', 'Product', 'Variant', 'SKU', 'Store', 'Status', 'Cost (PHP)', 'Added']
+
   return (
     <div className="admin-page inventory-page">
       <PageHeader title="Inventory" subtitle="Track product variations and stock across each boutique." />
@@ -360,17 +390,20 @@ export default function Inventory() {
       </div>
 
       <section className="admin-panel inventory-overview" aria-label="Catalog stock by product">
-        <div className="inventory-note">
-          {groups.length > 0 ? (
-            <>
-              <strong>{groups.length}</strong> product{groups.length === 1 ? '' : 's'} ·{' '}
-              <strong>{filteredRows.length}</strong> stocked variation{filteredRows.length === 1 ? '' : 's'} ·{' '}
-              <strong>{groups.reduce((sum, g) => sum + g.totalOnHand, 0)}</strong> on hand
-              {!allStores && state.stores.length ? ` at ${storeName(storeFilter)}` : ''}
-            </>
-          ) : (
-            'Variations with no stock records stay hidden here — add stock from the Products page.'
-          )}
+        <div className="inventory-card-head">
+          <div className="inventory-note">
+            {groups.length > 0 ? (
+              <>
+                <strong>{groups.length}</strong> product{groups.length === 1 ? '' : 's'} ·{' '}
+                <strong>{filteredRows.length}</strong> stocked variation{filteredRows.length === 1 ? '' : 's'} ·{' '}
+                <strong>{groups.reduce((sum, g) => sum + g.totalOnHand, 0)}</strong> on hand
+                {!allStores && state.stores.length ? ` at ${storeName(storeFilter)}` : ''}
+              </>
+            ) : (
+              'Variations with no stock records stay hidden here — add stock from the Products page.'
+            )}
+          </div>
+          <ExportMenu label="inventory" columns={INVENTORY_EXPORT_COLUMNS} rows={exportUnitRows} showLabel />
         </div>
 
         {groups.length > 0 ? (

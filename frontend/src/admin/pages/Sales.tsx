@@ -8,8 +8,10 @@ import type { StatusTone } from '../ui'
 import { Drawer, EmptyState, Field, MetricCard, PageHeader, StatusBadge } from '../ui'
 import SalesTrendChart from '../SalesTrendChart'
 import type { ActivePoint, RangeKey } from '../SalesTrendChart'
+import ExportMenu from '../ExportMenu'
+import type { ExportRow } from '../ExportMenu'
 
-const tabs = ['transactions', 'payments', 'insights'] as const
+const tabs = ['payments', 'transactions', 'insights'] as const
 type SalesTab = (typeof tabs)[number]
 const TAB_LABEL: Record<SalesTab, string> = {
   transactions: 'Transactions',
@@ -174,7 +176,7 @@ function computeMoney(
 export default function Sales() {
   const { state, voidSale, refundSale } = useAdminData()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [tab, setTab] = useState<SalesTab>((searchParams.get('tab') as SalesTab | null) ?? 'transactions')
+  const [tab, setTab] = useState<SalesTab>((searchParams.get('tab') as SalesTab | null) ?? 'payments')
 
   // Shared filters
   const [storeFilter, setStoreFilter] = useState('all')
@@ -186,6 +188,8 @@ export default function Sales() {
   const [search, setSearch] = useState('')
   const [txPage, setTxPage] = useState(1)
   const txPageSize = 20
+  const [transferPage, setTransferPage] = useState(1)
+  const transferPageSize = 20
 
   // Payments filters
   const [methodFilter, setMethodFilter] = useState<'all' | PaymentMethod>('all')
@@ -210,6 +214,17 @@ export default function Sales() {
   const variantById = useMemo(() => new Map(state.productVariants.map((v) => [v.id, v])), [state.productVariants])
   const productById = useMemo(() => new Map(state.products.map((p) => [p.id, p])), [state.products])
   const activeStores = useMemo(() => state.stores.filter((store) => store.isActive && !store.isDeleted), [state.stores])
+  const txItemByOrder = useMemo(() => {
+    const labels = new Map<string, string>()
+    state.orderLines.forEach((line) => {
+      if (labels.has(line.orderId)) return
+      const variant = line.variantId ? variantById.get(line.variantId) : undefined
+      const product = variant ? productById.get(variant.productId) : undefined
+      const detail = variant ? [variant.color, variant.size].filter(Boolean).join(' · ') : ''
+      labels.set(line.orderId, product ? `${product.name}${detail ? ` · ${detail}` : ''}` : (line.description || 'Made-to-Order'))
+    })
+    return labels
+  }, [productById, state.orderLines, variantById])
 
   const storeName = useCallback((storeId: string | null | undefined) => {
     if (!storeId) return 'Unknown store'
@@ -284,6 +299,47 @@ export default function Sales() {
   const visibleTxRows = useMemo(
     () => txRows.slice((txPage - 1) * txPageSize, txPage * txPageSize),
     [txRows, txPage, txPageSize],
+  )
+
+  const transferRows = useMemo(() => {
+    const unitById = new Map(state.inventoryUnits.map((unit) => [unit.id, unit]))
+    const variantById = new Map(state.productVariants.map((variant) => [variant.id, variant]))
+    const productById = new Map(state.products.map((product) => [product.id, product]))
+    const storeById = new Map(state.stores.map((store) => [store.id, store]))
+
+    return state.stockMovements
+      .filter((movement) => {
+        if (movement.kind !== 'transferred_in' && movement.kind !== 'transferred_out') return false
+        if (storeFilter !== 'all' && movement.fromStoreId !== storeFilter && movement.toStoreId !== storeFilter) return false
+        return withinDateFilter(movement.createdAt, dateFilter)
+      })
+      .sort((a, b) => parseDbUtc(b.createdAt).getTime() - parseDbUtc(a.createdAt).getTime())
+      .map((movement) => {
+        const variant = variantById.get(unitById.get(movement.unitId)?.variantId ?? '')
+        const product = variant ? productById.get(variant.productId) : undefined
+        return {
+          movement,
+          item: product?.name ?? 'Variant',
+          detail: variant ? [variant.color, variant.size].filter(Boolean).join(' · ') : '',
+          from: storeById.get(movement.fromStoreId ?? '')?.code ?? '—',
+          to: storeById.get(movement.toStoreId ?? '')?.code ?? '—',
+          status: movement.kind === 'transferred_in' ? 'Received' : 'Sent',
+        }
+      })
+  }, [dateFilter, state.inventoryUnits, state.productVariants, state.products, state.stockMovements, state.stores, storeFilter])
+
+  useEffect(() => {
+    setTransferPage(1)
+  }, [dateFilter, storeFilter])
+
+  const transferPageCount = Math.max(1, Math.ceil(transferRows.length / transferPageSize))
+  useEffect(() => {
+    setTransferPage((page) => Math.min(page, transferPageCount))
+  }, [transferPageCount])
+
+  const visibleTransferRows = useMemo(
+    () => transferRows.slice((transferPage - 1) * transferPageSize, transferPage * transferPageSize),
+    [transferPage, transferPageSize, transferRows],
   )
 
   const txKpis = useMemo(() => {
@@ -530,6 +586,62 @@ export default function Sales() {
   }
 
   // =========================================================================
+  // Export datasets (respect current store / status / search filters)
+  // =========================================================================
+  const exportTxRows = useMemo<ExportRow[]>(() => txRows.map((s) => ({
+    date: s.order.createdAt,
+    values: [
+      s.order.reference || '',
+      s.order.customerName || 'Walk-in',
+      txItemByOrder.get(s.order.id) || '',
+      s.money.itemCount,
+      formatDate(s.order.createdAt),
+      s.storeName,
+      s.fulfill.label,
+      s.order.status,
+      s.money.total / 100,
+    ],
+  })), [txRows, txItemByOrder])
+
+  const exportTransferRows = useMemo<ExportRow[]>(() => transferRows.map((t) => ({
+    date: t.movement.createdAt,
+    values: [
+      formatDate(t.movement.createdAt),
+      t.item,
+      t.detail,
+      t.from,
+      t.to,
+      t.movement.staffName || '',
+      t.status,
+    ],
+  })), [transferRows])
+
+  const exportPayRows = useMemo<ExportRow[]>(() => payRows.map((payment) => {
+    const order = orderById.get(payment.orderId)
+    const statusLabel = payment.kind === 'payment'
+      ? 'Payment'
+      : payment.kind === 'refund'
+        ? 'Refund'
+        : 'Void reversal'
+    return {
+      date: payment.receivedAt,
+      values: [
+        formatDate(payment.receivedAt),
+        order?.reference ?? '',
+        order?.customerName || '',
+        order ? storeName(order.storeId) : '',
+        METHOD_LABEL[payment.method],
+        payment.amountCents / 100,
+        statusLabel,
+      ],
+    }
+  }), [payRows, orderById, storeName])
+
+  const TX_EXPORT_COLUMNS = ['Reference', 'Customer', 'Item', 'Items', 'Date', 'Store', 'Fulfillment', 'Status', 'Total (PHP)']
+  const TRANSFER_EXPORT_COLUMNS = ['Date', 'Item', 'Detail', 'From', 'To', 'Staff', 'Status']
+  const PAY_EXPORT_COLUMNS = ['Date', 'Transaction', 'Customer', 'Store', 'Method', 'Amount (PHP)', 'Status']
+
+  // =========================================================================
   // Render
   // =========================================================================
   const storeOptions = (
@@ -635,24 +747,21 @@ export default function Sales() {
       {/* ===================== TRANSACTIONS ===================== */}
       {tab === 'transactions' ? (
         <div className="sales-tab-content">
-          <div className="metrics-grid kpi-two">
-          <MetricCard title="Net sales" value={formatPeso(txKpis.net)} helper={`Gross ${formatPeso(txKpis.gross)} · ${formatPeso(txKpis.refunded)} refunded`} tone="neutral" />
-          <MetricCard title="Outstanding balance" value={formatPeso(txKpis.outstanding)} helper="left on unpaid / partial orders" tone={txKpis.outstanding > 0 ? 'warning' : 'neutral'} />
-          </div>
-
-          <section className="admin-panel compact-panel ledger-panel">
+          <section className="admin-panel compact-panel ledger-panel tx-history-panel">
             <div className="panel-header-row">
               <h3>Transactions</h3>
-              <span className="ledger-count">{formatCount(txRows.length)} results</span>
+              <div className="panel-head-actions">
+                <span className="ledger-count">{formatCount(txRows.length)} results</span>
+                <ExportMenu label="transactions" columns={TX_EXPORT_COLUMNS} rows={exportTxRows} showLabel />
+              </div>
             </div>
             <div className="tx-table" role="table" aria-label="Transactions">
               <div className="tx-head" role="row">
                 <span role="columnheader">Transaction</span>
                 <span role="columnheader">Customer</span>
+                <span role="columnheader">Item</span>
                 <span role="columnheader">Date / time</span>
                 <span role="columnheader">Store</span>
-                <span role="columnheader" className="num">Items</span>
-                <span role="columnheader">Payment</span>
                 <span role="columnheader">Fulfillment</span>
                 <span role="columnheader" className="num">Total</span>
               </div>
@@ -669,10 +778,9 @@ export default function Sales() {
                   >
                     <span className="tx-ref" role="cell">{s.order.reference || '—'}</span>
                     <span className="tx-customer" role="cell">{s.order.customerName || 'Walk-in'}</span>
+                    <span className="tx-item" role="cell"><strong>{txItemByOrder.get(s.order.id) || 'No item details'}</strong><small>{formatCount(s.money.itemCount)} item{s.money.itemCount === 1 ? '' : 's'}</small></span>
                     <span className="tx-time" role="cell">{formatDateTime(s.order.createdAt)}</span>
                     <span className="tx-store" role="cell">{s.storeName}</span>
-                    <span className="num" role="cell">{formatCount(s.money.itemCount)}</span>
-                    <span role="cell"><StatusBadge label={s.pay.label} tone={s.pay.tone} /></span>
                     <span role="cell"><StatusBadge label={s.fulfill.label} tone={s.fulfill.tone} /></span>
                     <span className="num tx-total" role="cell">{formatPeso(s.money.total)}</span>
                   </div>
@@ -694,6 +802,55 @@ export default function Sales() {
                   <button type="button" className="secondary-button" disabled={txPage === txPageCount} onClick={() => setTxPage((page) => Math.min(txPageCount, page + 1))}>Next ›</button>
                 </div>
                 <label className="pagination-size">20 per page</label>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="admin-panel compact-panel ledger-panel transfer-history-panel">
+            <div className="panel-header-row">
+              <h3>Transfer history</h3>
+              <div className="panel-head-actions">
+                <span className="ledger-count">{formatCount(transferRows.length)} entries</span>
+                <ExportMenu label="transfer-history" columns={TRANSFER_EXPORT_COLUMNS} rows={exportTransferRows} showLabel />
+              </div>
+            </div>
+            <div className="transfer-table" role="table" aria-label="Transfer history">
+              <div className="transfer-head" role="row">
+                <span role="columnheader">Date</span>
+                <span role="columnheader">Item</span>
+                <span role="columnheader">From</span>
+                <span role="columnheader">To</span>
+                <span role="columnheader">Staff</span>
+                <span role="columnheader">Status</span>
+              </div>
+              <div className="transfer-body">
+                {visibleTransferRows.length ? visibleTransferRows.map(({ movement, item, detail, from, to, status }) => (
+                  <div className={`transfer-row ${movement.kind === 'transferred_in' ? 'is-inbound' : 'is-outbound'}`} role="row" key={movement.id}>
+                    <span role="cell">{formatDateTime(movement.createdAt)}</span>
+                    <span role="cell"><strong>{item}</strong><small>{detail || 'Variant'}</small></span>
+                    <span role="cell">{from}</span>
+                    <span role="cell">{to}</span>
+                    <span role="cell">{movement.staffName || '—'}</span>
+                    <span role="cell"><StatusBadge label={status} tone={movement.kind === 'transferred_in' ? 'success' : 'info'} /></span>
+                  </div>
+                )) : <EmptyState title="No transfers recorded" description="Transfers between stores will appear here." />}
+              </div>
+            </div>
+            {transferRows.length > 0 ? (
+              <div className="ledger-pagination">
+                <span>Showing {(transferPage - 1) * transferPageSize + 1}-{Math.min(transferPage * transferPageSize, transferRows.length)} of {formatCount(transferRows.length)} entries</span>
+                <div className="pagination-actions">
+                  <button type="button" className="secondary-button" disabled={transferPage === 1} onClick={() => setTransferPage((page) => Math.max(1, page - 1))}>‹ Previous</button>
+                  <div className="pagination-pages" aria-label="Transfer history pages">
+                    {Array.from({ length: Math.min(transferPageCount, 5) }, (_, index) => index + 1).map((page) => (
+                      <button key={page} type="button" className={`pagination-page ${transferPage === page ? 'active' : ''}`} aria-current={transferPage === page ? 'page' : undefined} onClick={() => setTransferPage(page)}>
+                        {page}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" className="secondary-button" disabled={transferPage === transferPageCount} onClick={() => setTransferPage((page) => Math.min(transferPageCount, page + 1))}>Next ›</button>
+                </div>
+                <span className="pagination-size">{transferPageSize} per page</span>
               </div>
             ) : null}
           </section>
@@ -730,7 +887,10 @@ export default function Sales() {
           <section className="admin-panel compact-panel ledger-panel">
             <div className="panel-header-row">
               <h3>Financial ledger</h3>
-              <span className="ledger-count">{formatCount(payRows.length)} entries</span>
+              <div className="panel-head-actions">
+                <span className="ledger-count">{formatCount(payRows.length)} entries</span>
+                <ExportMenu label="payments" columns={PAY_EXPORT_COLUMNS} rows={exportPayRows} showLabel />
+              </div>
             </div>
             <div className="pay-table" role="table" aria-label="Payments ledger">
               <div className="pay-head" role="row">
@@ -757,7 +917,15 @@ export default function Sales() {
                       ? 'warning'
                       : 'danger'
                   return (
-                    <div key={payment.id} className="pay-row" role="row">
+                    <div
+                      key={payment.id}
+                      className="pay-row clickable"
+                      role="row"
+                      tabIndex={0}
+                      onClick={() => order && openOrder(order.id)}
+                      onKeyDown={(event) => order && onRowKeyDown(event, order.id)}
+                      aria-label={order ? `Open payment for transaction ${order.reference}` : 'Payment details unavailable'}
+                    >
                       <span className="pay-date" role="cell">{formatDate(payment.receivedAt)}</span>
                       <span className="pay-ref" role="cell">{order?.reference ?? '—'}</span>
                       <span className="pay-customer" role="cell">{order?.customerName || '—'}</span>
@@ -925,10 +1093,20 @@ export default function Sales() {
 
             <section className="detail-section"><h4>Items</h4>
               {selectedLines.length ? selectedLines.map((line) => (
-                <div key={line.id} className="detail-line">
-                  <span>{line.description || 'Made-to-Order'} × {line.quantity}</span>
-                  <strong>{formatPeso(line.agreedPriceCents * line.quantity)}</strong>
-                </div>
+                (() => {
+                  const variant = line.variantId ? variantById.get(line.variantId) : undefined
+                  const product = variant ? productById.get(variant.productId) : undefined
+                  const detail = variant ? [variant.color, variant.size].filter(Boolean).join(' · ') : ''
+                  const label = product
+                    ? `${product.name}${detail ? ` · ${detail}` : ''}`
+                    : line.description || 'Made-to-Order'
+                  return (
+                    <div key={line.id} className="detail-line">
+                      <span>{label} × {line.quantity}</span>
+                      <strong>{formatPeso(line.agreedPriceCents * line.quantity)}</strong>
+                    </div>
+                  )
+                })()
               )) : <p className="detail-empty">No line items recorded.</p>}
             </section>
 
