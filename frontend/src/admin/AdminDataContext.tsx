@@ -18,6 +18,7 @@ import type {
   UnitStatus,
 } from './data'
 import { apiRpc } from '../shared/api/client'
+import { useAuth } from '../auth/AuthContext'
 
 export interface AdminDataContextValue {
   state: AdminState
@@ -117,6 +118,7 @@ const EMPTY_STATE: AdminState = {
 }
 
 export function AdminDataProvider({ children }: { children: ReactNode }) {
+  const { user, loading: authLoading } = useAuth()
   const [state, setState] = useState<AdminState>(EMPTY_STATE)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -131,22 +133,41 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
   const hydrate = async () => {
     setLoading(true)
     setError(null)
-    try {
-      const next = await apiRpc<unknown>('admin_get_state', {})
-      setState(normalizeState(next))
-    } catch (err) {
-      console.error('[admin] failed to load state', err)
-      setError(err instanceof Error ? err.message : 'Failed to load admin data')
-    } finally {
-      setLoading(false)
+    let lastError: unknown
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const next = await apiRpc<unknown>('admin_get_state', {})
+        setState(normalizeState(next))
+        setLoading(false)
+        return
+      } catch (err) {
+        lastError = err
+        if (attempt < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 300 * 2 ** attempt))
+        }
+      }
     }
+
+    console.error('[admin] failed to load state after retries', lastError)
+    setError(lastError instanceof Error ? lastError.message : 'Failed to load admin data')
+    setLoading(false)
   }
 
-  // Hydrate the full admin dataset from Supabase on mount.
+  // Wait for AuthProvider to settle before calling the admin-only RPC. The
+  // provider is mounted on the login route too, where no admin session exists.
   useEffect(() => {
+    if (authLoading) return
+    if (user?.role !== 'admin') {
+      setState(EMPTY_STATE)
+      setError(null)
+      setLoading(false)
+      return
+    }
     void hydrate()
+    // hydrate is intentionally recreated with the provider render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [authLoading, user?.role])
 
   // Run an admin write RPC, then reload state so the database is the source of
   // truth. Returns false (and records an error) when the write fails.
