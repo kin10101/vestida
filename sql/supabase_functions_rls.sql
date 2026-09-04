@@ -141,7 +141,7 @@ BEGIN
   FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
   LOOP
     v_variant := (v_item->>'variant_id')::uuid;
-    v_price := COALESCE((v_item->>'agreed_price')::bigint, 0);
+    v_price := COALESCE((v_item->>'agreed_price')::bigint, 0) * 100;
     v_spec := v_item->>'spec_note';
     v_qty := COALESCE((v_item->>'quantity')::int, 1);
     v_unit := (v_item->>'unit_id')::uuid;
@@ -425,6 +425,7 @@ AS $$
     'totalSales', COALESCE(SUM(p.amount), 0) / 100.0,
     'cash',       COALESCE(SUM(p.amount) FILTER (WHERE p.method = 'cash'), 0) / 100.0,
     'gcash',      COALESCE(SUM(p.amount) FILTER (WHERE p.method = 'gcash'), 0) / 100.0,
+    'bank',       COALESCE(SUM(p.amount) FILTER (WHERE p.method = 'bank_transfer'), 0) / 100.0,
     'incoming',   (SELECT COUNT(*) FROM public.inventory_unit u
                    WHERE u.current_store_id = public.get_my_store_id()
                      AND u.status = 'in_transit')
@@ -468,6 +469,9 @@ REVOKE ALL ON FUNCTION public.get_catalog() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_catalog() TO authenticated;
 
 -- Stock summary: per-variant counts across ALL stores (Check Stock page).
+-- Only variants that actually exist in inventory (ever had a unit — including
+-- sold/damaged) are returned; matrix-generated color x size combos that were
+-- never stocked are omitted, as are products with no stocked variants.
 CREATE OR REPLACE FUNCTION public.get_stock_summary()
 RETURNS json
 LANGUAGE sql
@@ -495,10 +499,14 @@ AS $$
         FROM public.inventory_unit
         GROUP BY variant_id, current_store_id
       ) x ON x.variant_id = pv.id AND x.current_store_id = st.id
+      WHERE EXISTS (
+        SELECT 1 FROM public.inventory_unit u WHERE u.variant_id = pv.id
+      )
       GROUP BY pv.id, pv.product_id, pv.color, pv.size
     ) v ON v.product_id = p.id
     WHERE p.is_active
     GROUP BY p.id, p.category_id, p.name
+    HAVING COUNT(v.id) > 0
   ) p
 $$;
 REVOKE ALL ON FUNCTION public.get_stock_summary() FROM PUBLIC;

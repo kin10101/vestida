@@ -123,6 +123,15 @@ CREATE TABLE IF NOT EXISTS "product" (
   "name" varchar NOT NULL,
   "description" text,
   "is_active" boolean DEFAULT true,
+  -- Product-level catalog definition: the SKU prefix and the independent
+  -- color/size lists that define the full color x size variant matrix.
+  "sku_prefix" varchar DEFAULT '',
+  "colors" text[] DEFAULT '{}',
+  "sizes" text[] DEFAULT '{}',
+  -- Product-level pricing (centavos). Concrete product_variant rows inherit
+  -- regular_price = this selling price; cost is per piece on inventory_unit.
+  "cost_price" integer DEFAULT 0,
+  "regular_price" integer DEFAULT 0,
   "created_at" timestamp DEFAULT (now()),
   "updated_at" timestamp DEFAULT (now())
 );
@@ -137,6 +146,11 @@ CREATE TABLE IF NOT EXISTS "product_variant" (
   "created_at" timestamp DEFAULT (now()),
   "updated_at" timestamp DEFAULT (now())
 );
+
+-- One concrete variant per (product, color, size) combination. Used by the
+-- product matrix reconciliation so we can upsert the full color x size grid.
+CREATE UNIQUE INDEX IF NOT EXISTS "product_variant_matrix_key"
+  ON "product_variant" ("product_id", "color", "size");
 
 CREATE TABLE IF NOT EXISTS "inventory_unit" (
   "id" uuid PRIMARY KEY DEFAULT (gen_random_uuid()),

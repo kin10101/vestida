@@ -370,6 +370,81 @@ REVOKE ALL ON FUNCTION public.admin_adjust_units(uuid[], text, text) FROM PUBLIC
 GRANT EXECUTE ON FUNCTION public.admin_adjust_units(uuid[], text, text) TO authenticated;
 
 -- ============================================================
+-- Admin transfer between boutiques. Moves in_stock units of each
+-- variant from one store to another IMMEDIATELY (no in_transit
+-- wait for a staff receive) so both stores' on-hand stay accurate
+-- in the admin inventory view. Logs a transferred_out +
+-- transferred_in pair per unit sharing one reference_id.
+-- items json: [{ variant_id: uuid, quantity: int }]
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.admin_transfer_stock(
+  p_from_store_id uuid,
+  p_to_store_id uuid,
+  p_items jsonb DEFAULT '[]'::jsonb,
+  p_note text DEFAULT NULL
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_staff uuid;
+  v_op_id uuid := gen_random_uuid();
+  v_item jsonb;
+  v_variant uuid;
+  v_qty int;
+  v_unit uuid;
+  v_i int;
+  v_moved int := 0;
+BEGIN
+  PERFORM public.assert_admin();
+  SELECT id INTO v_staff FROM public.staff WHERE auth_uid = auth.uid();
+  IF p_from_store_id IS NULL OR p_to_store_id IS NULL OR p_from_store_id = p_to_store_id THEN
+    RAISE EXCEPTION 'invalid source or destination store';
+  END IF;
+
+  FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
+  LOOP
+    v_variant := (v_item->>'variant_id')::uuid;
+    v_qty := GREATEST(1, COALESCE((v_item->>'quantity')::int, 1));
+    FOR v_i IN 1..v_qty
+    LOOP
+      SELECT id INTO v_unit
+      FROM public.inventory_unit
+      WHERE variant_id = v_variant
+        AND current_store_id = p_from_store_id
+        AND status = 'in_stock'
+      ORDER BY created_at
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED;
+      IF v_unit IS NULL THEN
+        RAISE EXCEPTION 'not enough in_stock at source for variant %', v_variant;
+      END IF;
+      -- Immediate relocate: unit stays in_stock but changes store.
+      UPDATE public.inventory_unit
+        SET current_store_id = p_to_store_id, updated_at = now()
+        WHERE id = v_unit;
+      INSERT INTO public.stock_movement
+        (unit_id, movement_type, from_store_id, to_store_id, reference_type, reference_id, performed_by, note)
+      VALUES (v_unit, 'transferred_out', p_from_store_id, p_to_store_id, 'transfer', v_op_id, v_staff, p_note);
+      INSERT INTO public.stock_movement
+        (unit_id, movement_type, from_store_id, to_store_id, reference_type, reference_id, performed_by, note)
+      VALUES (v_unit, 'transferred_in', p_from_store_id, p_to_store_id, 'transfer', v_op_id, v_staff, p_note);
+      v_moved := v_moved + 1;
+    END LOOP;
+  END LOOP;
+
+  IF v_moved = 0 THEN
+    RAISE EXCEPTION 'no units to transfer';
+  END IF;
+  RETURN json_build_object('transfer_id', v_op_id, 'moved', v_moved);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_transfer_stock(uuid, uuid, jsonb, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.admin_transfer_stock(uuid, uuid, jsonb, text) TO authenticated;
+
+-- ============================================================
 -- Order: create or update an order + its line items.
 -- draft json: { id?, storeId, customerName, orderType, status,
 --   reference, notes, items: [{variantId?, description, quantity,
