@@ -29,7 +29,7 @@ export interface AdminDataContextValue {
   reload: () => Promise<void>
   upsertCategory: (category: { id?: string; name: string; createdAt?: string }) => Promise<void>
   deleteCategory: (categoryId: string, force?: boolean) => Promise<boolean>
-  upsertProduct: (product: Product) => Promise<void>
+  upsertProduct: (product: Product) => Promise<boolean>
   toggleProductActive: (id: string) => Promise<void>
   bulkToggleProductActive: (ids: string[], isActive: boolean) => Promise<void>
   deleteProducts: (ids: string[], force?: boolean) => Promise<{ ok: boolean; reason?: string }>
@@ -212,7 +212,7 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
       return persist(() => apiRpc('admin_delete_category', { p_id: categoryId, p_force: force ?? false }))
     },
     upsertProduct: async (product) => {
-      await persist(() => apiRpc('admin_upsert_product', {
+      return persist(() => apiRpc('admin_upsert_product', {
         p_id: isUuid(product.id) ? product.id : null,
         p_category_id: product.categoryId,
         p_name: product.name,

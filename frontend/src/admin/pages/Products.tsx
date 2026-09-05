@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronRight, Eye, EyeOff, PencilLine, Plus, X } from 'lucide-react'
+import { AnimatePresence, motion, MotionConfig } from 'framer-motion'
 import { useAdminData } from '../AdminDataContext'
 import type { Product } from '../data'
 import { Drawer, EmptyState, Field, PageHeader, StatusBadge, Toast } from '../ui'
@@ -38,15 +39,21 @@ const formatPeso = (value: number) =>
     maximumFractionDigits: 0,
   }).format(value / 100)
 
+const parsePriceCents = (value: string) => {
+  const amount = Number(value)
+  return Number.isFinite(amount) ? Math.max(0, Math.round(amount * 100)) : 0
+}
+
 // SKU = [SKU_PREFIX]-[first 3 letters of color]-[SIZE], e.g. LUNA-IVO-L.
 const buildSku = (prefix: string, color: string, size: string) =>
   `${prefix.trim().toUpperCase()}-${color.trim().toUpperCase().slice(0, 3)}-${size.trim().toUpperCase()}`
 
 export default function Products() {
-  const { state, upsertCategory, deleteCategory, upsertProduct, toggleProductActive, bulkToggleProductActive, deleteProducts, applyIntake } = useAdminData()
+  const { state, error, clearError, upsertCategory, deleteCategory, upsertProduct, toggleProductActive, bulkToggleProductActive, deleteProducts, applyIntake } = useAdminData()
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
-  const [selectedProductId, setSelectedProductId] = useState<string | null>(state.products[0]?.id ?? null)
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(() => state.products.find((product) => product.isActive)?.id ?? state.products[0]?.id ?? null)
+  const [deletedProductIds, setDeletedProductIds] = useState<string[]>([])
   const [bulkMode, setBulkMode] = useState(false)
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([])
   const [deleteWarnOpen, setDeleteWarnOpen] = useState(false)
@@ -68,8 +75,8 @@ export default function Products() {
   const [editColors, setEditColors] = useState<string[]>([])
   const [editSizes, setEditSizes] = useState<string[]>([])
   const [editSkuPrefix, setEditSkuPrefix] = useState('')
-  const [editCostCents, setEditCostCents] = useState(0)
-  const [editSellCents, setEditSellCents] = useState(0)
+  const [editCostValue, setEditCostValue] = useState('')
+  const [editSellValue, setEditSellValue] = useState('')
   const [newColor, setNewColor] = useState('')
   const [newSize, setNewSize] = useState('')
 
@@ -80,6 +87,9 @@ export default function Products() {
 
   // Success toast shown after stock is added.
   const [toast, setToast] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [savingProduct, setSavingProduct] = useState(false)
+  const [savingMatrix, setSavingMatrix] = useState(false)
 
   useEffect(() => {
     if (!toast) {
@@ -89,12 +99,21 @@ export default function Products() {
     return () => window.clearTimeout(timer)
   }, [toast])
 
+  useEffect(() => {
+    if (error) {
+      setSaveError(error)
+    }
+  }, [error])
+
   const categoryName = (categoryId: string) =>
     state.categories.find((category) => category.id === categoryId)?.name ?? 'Unassigned'
 
   const visibleProducts = useMemo(
     () =>
       state.products.filter((product) => {
+        if (deletedProductIds.includes(product.id)) {
+          return false
+        }
         if (categoryFilter !== 'all' && product.categoryId !== categoryFilter) {
           return false
         }
@@ -104,12 +123,13 @@ export default function Products() {
         const haystack = `${product.name} ${product.description}`.toLowerCase()
         return haystack.includes(search.trim().toLowerCase())
       }),
-    [search, categoryFilter, state.products],
+    [search, categoryFilter, deletedProductIds, state.products],
   )
 
   useEffect(() => {
-    if (!selectedProductId && visibleProducts[0]) {
-      setSelectedProductId(visibleProducts[0].id)
+    const preferredProduct = visibleProducts.find((product) => product.isActive) ?? visibleProducts[0]
+    if (!selectedProductId && preferredProduct) {
+      setSelectedProductId(preferredProduct.id)
     }
 
     if (selectedProductId && !visibleProducts.some((product) => product.id === selectedProductId)) {
@@ -118,8 +138,8 @@ export default function Products() {
   }, [selectedProductId, visibleProducts])
 
   const selectedProduct = useMemo(
-    () => state.products.find((product) => product.id === selectedProductId) ?? state.products[0] ?? null,
-    [selectedProductId, state.products],
+    () => state.products.find((product) => product.id === selectedProductId && !deletedProductIds.includes(product.id)) ?? null,
+    [deletedProductIds, selectedProductId, state.products],
   )
 
   // When the selected product changes (and when leaving edit mode) reset the
@@ -134,8 +154,8 @@ export default function Products() {
     setEditColors(selectedProduct.colors)
     setEditSizes(selectedProduct.sizes)
     setEditSkuPrefix(selectedProduct.skuPrefix)
-    setEditCostCents(selectedProduct.costPriceCents)
-    setEditSellCents(selectedProduct.regularPriceCents)
+    setEditCostValue(selectedProduct.costPriceCents ? String(selectedProduct.costPriceCents / 100) : '')
+    setEditSellValue(selectedProduct.regularPriceCents ? String(selectedProduct.regularPriceCents / 100) : '')
     setStockStoreId((previous) => (state.stores.some((store) => store.id === previous) ? previous : (state.stores[0]?.id ?? '')))
     setStockQty(1)
   }, [selectedProduct, state.stores])
@@ -161,6 +181,8 @@ export default function Products() {
     : 0
 
   const openProductModal = (product?: Product) => {
+    setSaveError(null)
+    clearError()
     if (product) {
       setProductDraft({
         id: product.id,
@@ -175,7 +197,10 @@ export default function Products() {
         regularPriceCents: product.regularPriceCents,
       })
     } else {
-      setProductDraft(emptyProductDraft(state.categories[0]?.id ?? ''))
+      const defaultCategory = categoryFilter !== 'all' && state.categories.some((category) => category.id === categoryFilter)
+        ? categoryFilter
+        : state.categories[0]?.id ?? ''
+      setProductDraft(emptyProductDraft(defaultCategory))
     }
     setProductModalOpen(true)
   }
@@ -227,12 +252,15 @@ export default function Products() {
     }
   }
 
-  const handleSaveProduct = () => {
+  const handleSaveProduct = async () => {
     if (!productDraft.name.trim() || !productDraft.categoryId) {
       return
     }
 
-    upsertProduct({
+    setSaveError(null)
+    clearError()
+    setSavingProduct(true)
+    const saved = await upsertProduct({
       id: productDraft.id ?? `product-${Date.now()}`,
       categoryId: productDraft.categoryId,
       name: productDraft.name,
@@ -247,7 +275,12 @@ export default function Products() {
         ? state.products.find((product) => product.id === productDraft.id)?.createdAt ?? new Date().toISOString()
         : new Date().toISOString(),
     })
-    setProductModalOpen(false)
+      setSavingProduct(false)
+      if (saved) {
+        setProductModalOpen(false)
+      } else {
+        setSaveError(error ?? 'Product could not be saved. Review the error banner for details.')
+      }
   }
 
   const handleToggleProduct = (product: Product) => {
@@ -263,10 +296,12 @@ export default function Products() {
     setEditColors(selectedProduct.colors)
     setEditSizes(selectedProduct.sizes)
     setEditSkuPrefix(selectedProduct.skuPrefix)
-    setEditCostCents(selectedProduct.costPriceCents)
-    setEditSellCents(selectedProduct.regularPriceCents)
+    setEditCostValue(selectedProduct.costPriceCents ? String(selectedProduct.costPriceCents / 100) : '')
+    setEditSellValue(selectedProduct.regularPriceCents ? String(selectedProduct.regularPriceCents / 100) : '')
     setNewColor('')
     setNewSize('')
+    setSaveError(null)
+    clearError()
     setEditMode(true)
   }
 
@@ -277,25 +312,47 @@ export default function Products() {
     setEditColors(selectedProduct.colors)
     setEditSizes(selectedProduct.sizes)
     setEditSkuPrefix(selectedProduct.skuPrefix)
-    setEditCostCents(selectedProduct.costPriceCents)
-    setEditSellCents(selectedProduct.regularPriceCents)
+    setEditCostValue(selectedProduct.costPriceCents ? String(selectedProduct.costPriceCents / 100) : '')
+    setEditSellValue(selectedProduct.regularPriceCents ? String(selectedProduct.regularPriceCents / 100) : '')
     setEditMode(false)
   }
 
-  const saveMatrix = () => {
+  const saveMatrix = async () => {
     if (!selectedProduct) {
       return
     }
     const colors = editColors.map((color) => color.trim()).filter((color) => color !== '')
     const sizes = editSizes.map((size) => size.trim()).filter((size) => size !== '')
-    upsertProduct({
+    const duplicateColor = colors.find((color, index) => colors.findIndex((item) => item.toLowerCase() === color.toLowerCase()) !== index)
+    const duplicateSize = sizes.find((size, index) => sizes.findIndex((item) => item.toLowerCase() === size.toLowerCase()) !== index)
+    if (duplicateColor || duplicateSize) {
+      setSaveError(`Duplicate ${duplicateColor ? 'color' : 'size'} entries are not allowed.`)
+      return
+    }
+    const generatedSkus = colors.flatMap((color) => sizes.map((size) => buildSku(editSkuPrefix, color, size)))
+    const duplicateSku = generatedSkus.find((sku, index) => generatedSkus.indexOf(sku) !== index)
+    const conflictsWithAnotherProduct = state.productVariants.some((variant) => variant.productId !== selectedProduct.id && generatedSkus.includes(variant.sku))
+    if (duplicateSku || conflictsWithAnotherProduct) {
+      setSaveError('These color and size entries generate a SKU that is already in use. Adjust the color, size, or SKU prefix.')
+      return
+    }
+
+    setSaveError(null)
+    clearError()
+    setSavingMatrix(true)
+    const saved = await upsertProduct({
       ...selectedProduct,
       skuPrefix: editSkuPrefix.trim(),
       colors,
       sizes,
-      costPriceCents: editCostCents,
-      regularPriceCents: editSellCents,
+      costPriceCents: parsePriceCents(editCostValue),
+      regularPriceCents: parsePriceCents(editSellValue),
     })
+    setSavingMatrix(false)
+    if (!saved) {
+      setSaveError(error ?? 'Variations could not be saved. Review the error banner for details.')
+      return
+    }
     setEditMode(false)
     setSelectedColor((previous) => (previous && colors.includes(previous) ? previous : (colors[0] ?? null)))
     setSelectedSize((previous) => (previous && sizes.includes(previous) ? previous : (sizes[0] ?? null)))
@@ -378,6 +435,10 @@ export default function Products() {
     const result = await deleteProducts(ids, false)
     setDeleting(false)
     if (result.ok) {
+      setDeletedProductIds((previous) => [...new Set([...previous, ...ids])])
+      if (selectedProductId && ids.includes(selectedProductId)) {
+        setSelectedProductId(null)
+      }
       setToast(`Deleted ${ids.length} product${ids.length === 1 ? '' : 's'}`)
       clearBulkSelection()
     } else if (result.reason === 'has_stock') {
@@ -392,6 +453,10 @@ export default function Products() {
     const result = await deleteProducts(ids, true)
     setDeleting(false)
     if (result.ok) {
+      setDeletedProductIds((previous) => [...new Set([...previous, ...ids])])
+      if (selectedProductId && ids.includes(selectedProductId)) {
+        setSelectedProductId(null)
+      }
       setToast(`Deleted ${ids.length} product${ids.length === 1 ? '' : 's'}`)
       clearBulkSelection()
     }
@@ -472,12 +537,13 @@ export default function Products() {
           <button type="button" className="secondary-button" onClick={() => setProductModalOpen(false)}>
             Cancel
           </button>
-          <button type="button" className="primary-button" onClick={handleSaveProduct} disabled={state.categories.length === 0}>
-            Save product
+          <button type="button" className="primary-button" onClick={() => void handleSaveProduct()} disabled={state.categories.length === 0 || savingProduct}>
+            {savingProduct ? 'Saving…' : 'Save product'}
           </button>
         </div>
       }
     >
+      {saveError ? <p className="form-error" role="alert">{saveError}</p> : null}
       <div className="form-grid">
         <Field label="Product name">
           <input
@@ -631,18 +697,24 @@ export default function Products() {
           <input
             type="number"
             min="0"
-            value={editCostCents / 100}
-            onChange={(event) => setEditCostCents(Math.max(0, Math.round(Number(event.target.value || 0) * 100)))}
+            step="0.01"
+            inputMode="decimal"
+            value={editCostValue}
+            onChange={(event) => setEditCostValue(event.target.value)}
             className="admin-input"
+            placeholder="0.00"
           />
         </Field>
         <Field label="Selling price (₱)">
           <input
             type="number"
             min="0"
-            value={editSellCents / 100}
-            onChange={(event) => setEditSellCents(Math.max(0, Math.round(Number(event.target.value || 0) * 100)))}
+            step="0.01"
+            inputMode="decimal"
+            value={editSellValue}
+            onChange={(event) => setEditSellValue(event.target.value)}
             className="admin-input"
+            placeholder="0.00"
           />
         </Field>
       </div>
@@ -717,7 +789,7 @@ export default function Products() {
     </Drawer>
   )
 
-  if (!selectedProduct) {
+  if (state.products.length === 0) {
     return (
       <div className="admin-page">
         <PageHeader title="Products" subtitle="Catalog and variant management." />
@@ -738,7 +810,8 @@ export default function Products() {
   }
 
   return (
-    <div className="admin-page product-page">
+    <MotionConfig reducedMotion="user">
+      <div className="admin-page product-page">
       <PageHeader
         title="Products"
         subtitle="Catalog, colors, sizes, and per-location stock."
@@ -824,11 +897,15 @@ export default function Products() {
 
           <div className="record-stack catalogue-list">
             {visibleProducts.length > 0 ? (
-              visibleProducts.map((product) => {
+              <AnimatePresence initial={false} mode="popLayout">
+                {visibleProducts.map((product) => {
                 const isSelected = selectedProductIds.includes(product.id)
                 return (
-                  <div
+                  <motion.div
                     key={product.id}
+                    layout
+                    exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                    transition={{ duration: 0.18, ease: 'easeOut' }}
                     role={bulkMode ? 'checkbox' : 'button'}
                     tabIndex={0}
                     aria-checked={bulkMode ? isSelected : undefined}
@@ -861,9 +938,10 @@ export default function Products() {
                       <span className="status-pill catalogue-item-cat">{categoryName(product.categoryId)}</span>
                     </div>
                     {!bulkMode ? <ChevronRight className="catalogue-chevron" size={18} /> : null}
-                  </div>
+                  </motion.div>
                 )
-              })
+                })}
+              </AnimatePresence>
             ) : (
               <EmptyState title="No matches" description="Adjust the search or filters to find the item you need." />
             )}
@@ -871,7 +949,14 @@ export default function Products() {
         </section>
 
         {/* ---------------- Product details (≈60%) ---------------- */}
-        <section ref={detailPanelRef} className={`admin-panel detail-panel product-details ${detailFocused ? 'detail-focused' : ''}`}>
+        <motion.section
+          key={selectedProduct?.id ?? 'empty-product-details'}
+          ref={detailPanelRef}
+          animate={{ opacity: 1, y: 0 }}
+          initial={{ opacity: 0, y: 8 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className={`admin-panel detail-panel product-details ${detailFocused ? 'detail-focused' : ''}`}
+        >
           {selectedProduct ? (
             <>
               <div className="panel-header-row detail-header product-detail-head">
@@ -909,9 +994,9 @@ export default function Products() {
                   {editMode ? (
                     <div className="inline-actions">
                       <button type="button" className="secondary-button" onClick={cancelEdit}>Cancel</button>
-                      <button type="button" className="primary-button" onClick={saveMatrix}>
+                      <button type="button" className="primary-button" onClick={() => void saveMatrix()} disabled={savingMatrix}>
                         <Check size={16} />
-                        Save
+                        {savingMatrix ? 'Saving…' : 'Save'}
                       </button>
                     </div>
                   ) : (
@@ -923,7 +1008,10 @@ export default function Products() {
                 </div>
 
                 {editMode ? (
-                  matrixEditor
+                  <>
+                    {saveError ? <p className="form-error" role="alert">{saveError}</p> : null}
+                    {matrixEditor}
+                  </>
                 ) : (
                   <>
                     <div className="matrix-block">
@@ -997,7 +1085,7 @@ export default function Products() {
           ) : (
             <EmptyState title="No product selected" description="Add a product or choose one from the catalog to manage its details." />
           )}
-        </section>
+        </motion.section>
       </div>
 
       {categoryDrawer}
@@ -1005,6 +1093,7 @@ export default function Products() {
       {stockDrawer}
       {deleteWarningDrawer}
       {toast ? <Toast message={toast} onClose={() => setToast(null)} /> : null}
-    </div>
+      </div>
+    </MotionConfig>
   )
 }

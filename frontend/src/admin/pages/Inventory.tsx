@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { AnimatePresence, motion, MotionConfig, useReducedMotion } from 'framer-motion'
 import { ArrowRightLeft, ChevronDown, History, MoreHorizontal, Plus, SlidersHorizontal } from 'lucide-react'
 import { useAdminData } from '../AdminDataContext'
 import type { InventoryUnit, Product, ProductVariant, UnitStatus } from '../data'
@@ -57,6 +58,7 @@ export default function Inventory() {
   const [search, setSearch] = useState('')
   const [expandedIds, setExpandedIds] = useState<string[]>([])
   const [menu, setMenu] = useState<{ variantId: string; x: number; y: number } | null>(null)
+  const reduceMotion = useReducedMotion()
 
   // Variant action states.
   const [adjustVariantId, setAdjustVariantId] = useState<string | null>(null)
@@ -358,7 +360,8 @@ export default function Inventory() {
   const INVENTORY_EXPORT_COLUMNS = ['Unit code', 'Product', 'Variant', 'SKU', 'Store', 'Status', 'Cost (PHP)', 'Added']
 
   return (
-    <div className="admin-page inventory-page">
+    <MotionConfig reducedMotion="user">
+      <div className="admin-page inventory-page">
       <PageHeader title="Inventory" subtitle="Track product variations and stock across each boutique." />
 
       <div className="manager-toolbar inventory-toolbar">
@@ -436,9 +439,16 @@ export default function Inventory() {
                     <ChevronDown className="inv-chevron" size={18} aria-hidden="true" />
                   </button>
 
-                  {expanded ? (
-                    <div id={`inventory-rows-${group.product.id}`} className="inventory-table-wrap">
-                      <table className="inventory-table">
+                  <AnimatePresence initial={false}>
+                    {expanded ? (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.65, 0, 0.35, 1] }}
+                      >
+                        <div id={`inventory-rows-${group.product.id}`} className="inventory-table-wrap">
+                          <table className="inventory-table">
                         <thead>
                           <tr>
                             <th className="col-sku">SKU</th>
@@ -491,9 +501,11 @@ export default function Inventory() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
-                    </div>
-                  ) : null}
+                          </table>
+                        </div>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
                 </div>
               )
             })}
@@ -693,6 +705,7 @@ export default function Inventory() {
       </Drawer>
 
       {toast ? <Toast message={toast} onClose={() => setToast(null)} /> : null}
-    </div>
+      </div>
+    </MotionConfig>
   )
 }

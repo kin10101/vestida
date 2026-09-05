@@ -197,7 +197,7 @@ export default function Stores() {
       </> : null}
 
       {tab === 'accounts' ? <>
-        <div className="manager-toolbar"><div className="toolbar-right full"><button type="button" className="primary-button" onClick={() => openAccountForm()} disabled={unconfigured.length === 0}><KeyRound size={16} />Add account</button></div></div>
+        <div className="manager-toolbar"><div className="toolbar-right full">{unconfigured.length > 0 ? <button type="button" className="primary-button" onClick={() => openAccountForm()}><KeyRound size={16} />Add account</button> : null}</div></div>
         <div className="record-stack compact">
           {accounts.length > 0 ? accounts.map((account) => {
             const configured = !!account.staffId

@@ -202,6 +202,7 @@ export default function Sales() {
 
   // Drawer / modals
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
+  const [paymentHistoryOpen, setPaymentHistoryOpen] = useState(false)
   const [voidOpen, setVoidOpen] = useState(false)
   const [refundOpen, setRefundOpen] = useState(false)
   const [reason, setReason] = useState('')
@@ -547,6 +548,7 @@ export default function Sales() {
 
   const openOrder = (id: string) => {
     setSelectedOrderId(id)
+    setPaymentHistoryOpen(false)
     setReason('')
   }
 
@@ -1063,13 +1065,13 @@ export default function Sales() {
         subtitle="Staff-created record. Details cannot be edited from admin."
         onClose={() => setSelectedOrderId(null)}
         footer={(
-          <div className="modal-footer-actions">
+          <div className="modal-footer-actions transaction-footer-actions">
             <button type="button" className="secondary-button" onClick={() => setSelectedOrderId(null)}>Close</button>
             {canVoid ? (
               <button type="button" className="secondary-button exception-button" onClick={() => { setReason(''); setVoidOpen(true) }}><Ban size={16} />Void sale</button>
             ) : null}
             {canRefund ? (
-              <button type="button" className="primary-button" onClick={openRefund}><Undo2 size={16} />Refund</button>
+              <button type="button" className="secondary-button exception-button" onClick={openRefund}><Undo2 size={16} />Refund</button>
             ) : null}
           </div>
         )}
@@ -1086,12 +1088,12 @@ export default function Sales() {
               <div><span>Customer</span><strong>{selectedOrder.customerName || 'Walk-in'}</strong></div>
               <div><span>Store</span><strong>{selectedSummary.storeName}</strong></div>
               <div><span>Total</span><strong>{formatPeso(selectedMoney.total)}</strong></div>
-              <div><span>Paid</span><strong>{formatPeso(selectedMoney.retained)}</strong></div>
               <div><span>Balance due</span><strong className={selectedMoney.outstanding > 0 ? 'amount-negative' : ''}>{formatPeso(selectedMoney.outstanding)}</strong></div>
-              <div><span>Items</span><strong>{formatCount(selectedMoney.itemCount)}</strong></div>
             </div>
+            <p className="transaction-secondary-meta">Paid {formatPeso(selectedMoney.retained)} · {formatCount(selectedMoney.itemCount)} item{selectedMoney.itemCount === 1 ? '' : 's'}</p>
 
-            <section className="detail-section"><h4>Items</h4>
+            <section className="detail-section items-section"><h4>Items</h4>
+              <div className="detail-items-head" aria-hidden="true"><span>Item</span><span>Qty</span><span>Price</span></div>
               {selectedLines.length ? selectedLines.map((line) => (
                 (() => {
                   const variant = line.variantId ? variantById.get(line.variantId) : undefined
@@ -1101,8 +1103,9 @@ export default function Sales() {
                     ? `${product.name}${detail ? ` · ${detail}` : ''}`
                     : line.description || 'Made-to-Order'
                   return (
-                    <div key={line.id} className="detail-line">
-                      <span>{label} × {line.quantity}</span>
+                    <div key={line.id} className="detail-item-row">
+                      <span className="detail-item-name">{label}</span>
+                      <span>{line.quantity}</span>
                       <strong>{formatPeso(line.agreedPriceCents * line.quantity)}</strong>
                     </div>
                   )
@@ -1110,24 +1113,43 @@ export default function Sales() {
               )) : <p className="detail-empty">No line items recorded.</p>}
             </section>
 
-            <section className="detail-section"><h4>Payment activity</h4>
-              {selectedPayments.length ? selectedPayments.map((payment) => (
-                <div key={payment.id} className="detail-line">
-                  <span>{payment.kind === 'payment' ? `${METHOD_LABEL[payment.method]} payment` : payment.kind === 'refund' ? 'Refund' : 'Void reversal'} · {formatDateTime(payment.receivedAt)}</span>
-                  <strong className={payment.amountCents < 0 ? 'amount-negative' : ''}>{formatPeso(payment.amountCents)}</strong>
-                </div>
-              )) : <p className="detail-empty">No payments recorded.</p>}
+            <section className="detail-section payment-section"><h4>Payment</h4>
+              {selectedPayments.length ? (
+                <>
+                  <div className="payment-summary-line">
+                    <span>{selectedPayments[0].kind === 'payment' ? METHOD_LABEL[selectedPayments[0].method] : selectedPayments[0].kind === 'refund' ? 'Refund' : 'Void reversal'} · {formatDateTime(selectedPayments[0].receivedAt)}</span>
+                    <strong className={selectedPayments[0].amountCents < 0 ? 'amount-negative' : ''}>{formatPeso(selectedPayments[0].amountCents)}</strong>
+                  </div>
+                  {selectedPayments.length ? (
+                    <button type="button" className="text-button payment-history-toggle" onClick={() => setPaymentHistoryOpen((open) => !open)}>
+                      {paymentHistoryOpen ? 'Hide payment history' : 'View payment history'}
+                    </button>
+                  ) : null}
+                  {paymentHistoryOpen ? (
+                    <div className="payment-history-list">
+                      {selectedPayments.map((payment) => (
+                        <div key={payment.id} className="detail-line">
+                          <span>{payment.kind === 'payment' ? METHOD_LABEL[payment.method] : payment.kind === 'refund' ? 'Refund' : 'Void reversal'} · {formatDateTime(payment.receivedAt)}</span>
+                          <strong className={payment.amountCents < 0 ? 'amount-negative' : ''}>{formatPeso(payment.amountCents)}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
+              ) : <p className="detail-empty">No payments recorded.</p>}
             </section>
 
-            <section className="detail-section"><h4>Exception history</h4>
-              {selectedExceptions.length ? selectedExceptions.map((exception) => (
-                <div key={exception.id} className="exception-history">
-                  <StatusBadge label={exception.kind === 'void' ? 'Void' : 'Refund'} tone="danger" />
-                  <div><strong>{exception.processedBy}</strong><small>{formatDate(exception.createdAt)} · {exception.reason}</small></div>
-                  <span className={exception.amountCents > 0 ? '' : ''}>{exception.amountCents ? formatPeso(exception.amountCents) : '—'}</span>
-                </div>
-              )) : <p className="detail-empty">No exceptions recorded.</p>}
-            </section>
+            {selectedExceptions.length ? (
+              <section className="detail-section exception-section"><h4>Exception history</h4>
+                {selectedExceptions.map((exception) => (
+                  <div key={exception.id} className="exception-history">
+                    <StatusBadge label={exception.kind === 'void' ? 'Void' : 'Refund'} tone="danger" />
+                    <div><strong>{exception.processedBy}</strong><small>{formatDate(exception.createdAt)} · {exception.reason}</small></div>
+                    <span>{exception.amountCents ? formatPeso(exception.amountCents) : '—'}</span>
+                  </div>
+                ))}
+              </section>
+            ) : null}
           </div>
         ) : null}
       </Drawer>

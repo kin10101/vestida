@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import type { OrderLineItem, OrderRecord, Store } from './data'
+import { parseDbUtc } from '../shared/utils/dates'
 
 export type RangeKey = 'day' | 'week' | 'month'
 
@@ -22,7 +23,8 @@ interface Props {
   onExpand: () => void
 }
 
-const STORE_COLORS = ['#8a5a44', '#3b6ea5', '#5a8f6a', '#a5683b', '#7a5a8a', '#c0533c', '#4a7a8a', '#9a7a4a']
+const TOTAL_COLOR = '#8a5a44'
+const COMPARISON_COLORS = ['#8c8176', '#b19b82', '#6f8178']
 
 const formatPeso = (value: number) =>
   new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 0 }).format(value / 100)
@@ -48,7 +50,7 @@ function getBuckets(range: RangeKey): Bucket[] {
   const now = new Date()
   const points: Bucket[] = []
   if (range === 'day') {
-    for (let hour = 9; hour <= 18; hour += 3) {
+    for (let hour = 0; hour < 24; hour += 3) {
       const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hour)
       const end = new Date(start)
       end.setHours(hour + 3)
@@ -82,8 +84,8 @@ const getOrderTotal = (orderId: string, lines: OrderLineItem[]) =>
 
 const PAD_L = 64
 const PAD_R = 28
-const PAD_T = 26
-const PAD_B = 40
+const PAD_T = 36
+const PAD_B = 48
 const W = 760
 const H = 320
 
@@ -98,30 +100,48 @@ export default function SalesTrendChart({
   onExpand,
 }: Props) {
   const buckets = useMemo(() => getBuckets(range), [range])
+  const [selectedComparisonIds, setSelectedComparisonIds] = useState<string[]>([])
 
-  const series = useMemo(() => {
-    const targets = selectedStore === 'all' ? stores : stores.filter((store) => store.id === selectedStore)
-    return targets.map((store, idx) => ({
-      store,
-      color: STORE_COLORS[idx % STORE_COLORS.length],
-      amounts: buckets.map((b) =>
-        orders
-          .filter((o) => o.storeId === store.id && new Date(o.createdAt) >= b.start && new Date(o.createdAt) < b.end)
-          .reduce((sum, o) => sum + getOrderTotal(o.id, orderLines), 0),
-      ),
-    }))
-  }, [buckets, orderLines, orders, selectedStore, stores])
+  const storeAmounts = useMemo(() => new Map(
+    stores.map((store) => [store.id, buckets.map((b) => orders
+      .filter((o) => {
+        const createdAt = parseDbUtc(o.createdAt)
+        return o.storeId === store.id && createdAt >= b.start && createdAt < b.end
+      })
+      .reduce((sum, o) => sum + getOrderTotal(o.id, orderLines), 0))]),
+  ), [buckets, orderLines, orders, stores])
 
-  const yMax = useMemo(() => Math.max(1, ...series.flatMap((s) => s.amounts)), [series])
+  const activeStores = useMemo(() => stores
+    .map((store) => ({ store, total: (storeAmounts.get(store.id) ?? []).reduce((sum, amount) => sum + amount, 0) }))
+    .filter(({ total }) => total > 0)
+    .sort((a, b) => b.total - a.total), [storeAmounts, stores])
+
+  const scopedStoreIds = selectedStore === 'all' ? stores.map((store) => store.id) : [selectedStore]
+  const totalAmounts = buckets.map((_, index) => scopedStoreIds.reduce((sum, storeId) => sum + (storeAmounts.get(storeId)?.[index] ?? 0), 0))
+  const comparisonStores = activeStores
+    .filter(({ store }) => scopedStoreIds.includes(store.id) && selectedComparisonIds.includes(store.id))
+    .map(({ store }) => ({ store, color: COMPARISON_COLORS[selectedComparisonIds.indexOf(store.id) % COMPARISON_COLORS.length], amounts: storeAmounts.get(store.id) ?? [] }))
+  const series = [{ store: { id: 'all', name: selectedStore === 'all' ? 'All stores' : stores.find((store) => store.id === selectedStore)?.name ?? 'Store', code: 'All' }, color: TOTAL_COLOR, amounts: totalAmounts }, ...comparisonStores]
+
+  const largestAmount = Math.max(0, ...series.flatMap((s) => s.amounts))
+  const yMax = Math.max(10000, Math.ceil(largestAmount / 10000) * 10000)
   const plotW = W - PAD_L - PAD_R
   const plotH = H - PAD_T - PAD_B
   const xFor = (index: number) =>
     buckets.length === 1 ? PAD_L + plotW / 2 : PAD_L + (index / (buckets.length - 1)) * plotW
   const yFor = (amount: number) => PAD_T + plotH - (amount / yMax) * plotH
-  const pathFor = (amounts: number[]) =>
-    amounts.map((amount, index) => `${index === 0 ? 'M' : 'L'} ${xFor(index).toFixed(1)} ${yFor(amount).toFixed(1)}`).join(' ')
+  const pathFor = (amounts: number[]) => {
+    if (amounts.length < 2) return ''
+    const points = amounts.map((amount, index) => ({ x: xFor(index), y: yFor(amount) }))
+    return points.map((point, index) => {
+      if (index === 0) return `M ${point.x.toFixed(1)} ${point.y.toFixed(1)}`
+      const previous = points[index - 1]
+      const midpoint = (previous.x + point.x) / 2
+      return `C ${midpoint.toFixed(1)} ${previous.y.toFixed(1)}, ${midpoint.toFixed(1)} ${point.y.toFixed(1)}, ${point.x.toFixed(1)} ${point.y.toFixed(1)}`
+    }).join(' ')
+  }
 
-  const activeStoreName = active ? (series.find((s) => s.store.id === active.storeId)?.store.name ?? '') : ''
+  const activeStoreName = active?.storeId === 'all' ? series[0].store.name : (series.find((s) => s.store.id === active?.storeId)?.store.name ?? '')
   const tooltipX = active ? xFor(active.index) : 0
   const tooltipY = active ? yFor(active.amount) : 0
   const tipW = 200
@@ -130,6 +150,19 @@ export default function SalesTrendChart({
 
   return (
     <div className="sales-trend-chart">
+      <div className="chart-filter-row" role="group" aria-label="Sales trend stores">
+        <button type="button" className={`chart-filter-chip ${selectedComparisonIds.length === 0 ? 'active' : ''}`} onClick={() => setSelectedComparisonIds([])}>
+          <span className="chart-filter-swatch total" /> All stores
+        </button>
+        {activeStores.map(({ store }) => {
+          const selected = selectedComparisonIds.includes(store.id)
+          return (
+            <button key={store.id} type="button" className={`chart-filter-chip ${selected ? 'active' : ''}`} onClick={() => setSelectedComparisonIds((current) => selected ? current.filter((id) => id !== store.id) : [...current, store.id])}>
+              <span className="chart-filter-swatch" style={{ background: COMPARISON_COLORS[selectedComparisonIds.indexOf(store.id) % COMPARISON_COLORS.length] }} /> {store.code}
+            </button>
+          )
+        })}
+      </div>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="sales-trend-svg"
@@ -147,7 +180,7 @@ export default function SalesTrendChart({
             <g key={step}>
               <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} className="chart-grid" />
               <text x={PAD_L - 10} y={y + 4} textAnchor="end" className="chart-axis-label">
-                {formatPeso(amount)}
+                {amount === 0 ? '₱0' : `₱${Math.round(amount / 1000)}k`}
               </text>
             </g>
           )
@@ -177,9 +210,23 @@ export default function SalesTrendChart({
               key={`${s.store.id}-${index}`}
               cx={xFor(index)}
               cy={yFor(amount)}
-              r={active && active.storeId === s.store.id && active.index === index ? 6 : amount > 0 ? 4 : 2.5}
+              r={active && active.storeId === s.store.id && active.index === index ? 6 : 0}
               fill={s.color}
               className="chart-point"
+              style={{ pointerEvents: 'none' }}
+            />
+          )),
+        )}
+
+        {series.map((s) =>
+          s.amounts.map((amount, index) => (
+            <circle
+              key={`hit-${s.store.id}-${index}`}
+              cx={xFor(index)}
+              cy={yFor(amount)}
+              r={16}
+              fill="transparent"
+              className="chart-point-hit"
               onClick={(event) => {
                 event.stopPropagation()
                 onSelectPoint({ storeId: s.store.id, index, label: buckets[index].label, amount, color: s.color })
@@ -212,7 +259,7 @@ export default function SalesTrendChart({
         {series.map((s) => (
           <span key={s.store.id} className="chart-legend-item">
             <span className="chart-legend-dot" style={{ background: s.color }} />
-            {s.store.code}
+            {s.store.name}
           </span>
         ))}
       </div>
