@@ -1,6 +1,6 @@
-import { motion } from 'framer-motion'
+import { motion, MotionConfig, AnimatePresence } from 'framer-motion'
 import { BarChart3, Boxes, LayoutDashboard, LogOut, Store, Tags } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, useLocation, useOutlet } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useAdminData } from './AdminDataContext'
 
@@ -13,6 +13,8 @@ const navItems = [
 ]
 
 export default function AdminLayout() {
+  const location = useLocation()
+  const outlet = useOutlet()
   const { signOut } = useAuth()
   const { loading, error, clearError, reload } = useAdminData()
 
@@ -62,26 +64,39 @@ export default function AdminLayout() {
         </button>
       </aside>
 
-      <main className="admin-main">
-        {loading ? (
-          <div className="admin-loading" role="status">Loading admin data…</div>
-        ) : (
-          <>
-            {error ? (
-              <div className="admin-error-banner" role="alert">
-                <span className="admin-error-banner-text">{error}</span>
-                <div className="admin-error-banner-actions">
-                  <button type="button" className="admin-error-retry" onClick={() => void reload()}>
-                    Retry
-                  </button>
-                  <button type="button" className="admin-error-dismiss" aria-label="Dismiss" onClick={clearError}>×</button>
+      <MotionConfig reducedMotion="user">
+        <main className="admin-main">
+          {loading ? (
+            <div className="admin-loading" role="status">Loading admin data…</div>
+          ) : (
+            <>
+              {error ? (
+                <div className="admin-error-banner" role="alert">
+                  <span className="admin-error-banner-text">{error}</span>
+                  <div className="admin-error-banner-actions">
+                    <button type="button" className="admin-error-retry" onClick={() => void reload()}>
+                      Retry
+                    </button>
+                    <button type="button" className="admin-error-dismiss" aria-label="Dismiss" onClick={clearError}>×</button>
+                  </div>
                 </div>
-              </div>
-            ) : null}
-            <Outlet />
-          </>
-        )}
-      </main>
+              ) : null}
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={`${location.pathname}${location.search}`}
+                  className="admin-route-transition"
+                  initial={{ opacity: 0, y: 3 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -2 }}
+                  transition={{ duration: 0.12, ease: 'easeOut' }}
+                >
+                  {outlet}
+                </motion.div>
+              </AnimatePresence>
+            </>
+          )}
+        </main>
+      </MotionConfig>
     </div>
   )
 }

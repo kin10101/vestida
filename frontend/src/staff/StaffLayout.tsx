@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link, Outlet, useLocation } from 'react-router-dom'
-import { AnimatePresence, motion } from 'framer-motion'
+import { Link, useLocation, useOutlet } from 'react-router-dom'
+import { AnimatePresence, motion, MotionConfig } from 'framer-motion'
 import { ArrowLeft, HelpCircle, LogOut, Phone, X } from 'lucide-react'
 import { HeaderTitleProvider } from './headerTitleProvider'
 import { useHeaderTitle } from './headerTitle'
@@ -168,14 +168,30 @@ function Header() {
 }
 
 export default function StaffLayout() {
+  const location = useLocation()
+  const outlet = useOutlet()
+
   return (
     <HeaderTitleProvider>
-      <div className="staff-app">
-        <Header />
-        <main className="staff-main">
-          <Outlet />
-        </main>
-      </div>
+      <MotionConfig reducedMotion="user">
+        <div className="staff-app">
+          <Header />
+          <main className="staff-main">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={`${location.pathname}${location.search}`}
+                className="route-transition"
+                initial={{ opacity: 0, y: 3 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -2 }}
+                transition={{ duration: 0.12, ease: 'easeOut' }}
+              >
+                {outlet}
+              </motion.div>
+            </AnimatePresence>
+          </main>
+        </div>
+      </MotionConfig>
     </HeaderTitleProvider>
   )
 }

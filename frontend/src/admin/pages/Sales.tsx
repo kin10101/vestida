@@ -25,15 +25,6 @@ const TAB_BLURB: Record<SalesTab, string> = {
   insights: 'How sales are performing — trends, mix, and top movers.',
 }
 
-const dateFilters = ['all', 'today', '7d', 'month'] as const
-type DateFilter = (typeof dateFilters)[number]
-const DATE_LABEL: Record<DateFilter, string> = {
-  all: 'All time',
-  today: 'Today',
-  '7d': 'Last 7 days',
-  month: 'This month',
-}
-
 const rangeLabels: RangeKey[] = ['day', 'week', 'month']
 
 type PayFilter = 'all' | 'paid' | 'partial' | 'unpaid' | 'voided'
@@ -101,17 +92,18 @@ const ORDER_TYPE_LABEL: Record<string, string> = {
 
 // ---- date scoping ---------------------------------------------------------
 
-function sameLocalDay(a: Date, b: Date) {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
-}
-
-function withinDateFilter(value: string, filter: DateFilter) {
-  if (filter === 'all') return true
+function withinDateRange(value: string, from: string, to: string) {
+  if (!from && !to) return true
+  if (from && to && from > to) return false
   const date = parseDbUtc(value)
-  const now = new Date()
-  if (filter === 'today') return sameLocalDay(date, now)
-  if (filter === '7d') return date.getTime() >= now.getTime() - 7 * 86_400_000
-  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()
+  const start = from ? new Date(`${from}T00:00:00`) : null
+  const end = to ? new Date(`${to}T00:00:00`) : null
+  if (start && date < start) return false
+  if (end) {
+    end.setDate(end.getDate() + 1)
+    if (date >= end) return false
+  }
+  return true
 }
 
 function startOfDay(date: Date) {
@@ -180,7 +172,8 @@ export default function Sales() {
 
   // Shared filters
   const [storeFilter, setStoreFilter] = useState('all')
-  const [dateFilter, setDateFilter] = useState<DateFilter>('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
 
   // Transactions filters
   const [payFilter, setPayFilter] = useState<PayFilter>('all')
@@ -270,9 +263,9 @@ export default function Sales() {
   const txBase = useMemo(
     () => Array.from(summaries.values()).filter((s) => {
       if (storeFilter !== 'all' && s.order.storeId !== storeFilter) return false
-      return withinDateFilter(s.order.createdAt, dateFilter)
+      return withinDateRange(s.order.createdAt, dateFrom, dateTo)
     }),
-    [summaries, storeFilter, dateFilter],
+    [summaries, storeFilter, dateFrom, dateTo],
   )
 
   const txRows = useMemo(() => {
@@ -290,7 +283,7 @@ export default function Sales() {
 
   useEffect(() => {
     setTxPage(1)
-  }, [dateFilter, storeFilter, payFilter, fulfillFilter, search])
+  }, [dateFrom, dateTo, storeFilter, payFilter, fulfillFilter, search])
 
   const txPageCount = Math.max(1, Math.ceil(txRows.length / txPageSize))
   useEffect(() => {
@@ -312,7 +305,7 @@ export default function Sales() {
       .filter((movement) => {
         if (movement.kind !== 'transferred_in' && movement.kind !== 'transferred_out') return false
         if (storeFilter !== 'all' && movement.fromStoreId !== storeFilter && movement.toStoreId !== storeFilter) return false
-        return withinDateFilter(movement.createdAt, dateFilter)
+        return withinDateRange(movement.createdAt, dateFrom, dateTo)
       })
       .sort((a, b) => parseDbUtc(b.createdAt).getTime() - parseDbUtc(a.createdAt).getTime())
       .map((movement) => {
@@ -327,11 +320,11 @@ export default function Sales() {
           status: movement.kind === 'transferred_in' ? 'Received' : 'Sent',
         }
       })
-  }, [dateFilter, state.inventoryUnits, state.productVariants, state.products, state.stockMovements, state.stores, storeFilter])
+  }, [dateFrom, dateTo, state.inventoryUnits, state.productVariants, state.products, state.stockMovements, state.stores, storeFilter])
 
   useEffect(() => {
     setTransferPage(1)
-  }, [dateFilter, storeFilter])
+  }, [dateFrom, dateTo, storeFilter])
 
   const transferPageCount = Math.max(1, Math.ceil(transferRows.length / transferPageSize))
   useEffect(() => {
@@ -380,17 +373,17 @@ export default function Sales() {
       const order = orderById.get(payment.orderId)
       if (!order) return false
       if (storeFilter !== 'all' && order.storeId !== storeFilter) return false
-      if (!withinDateFilter(payment.receivedAt, dateFilter)) return false
+      if (!withinDateRange(payment.receivedAt, dateFrom, dateTo)) return false
       if (methodFilter !== 'all' && payment.method !== methodFilter) return false
       if (kindFilter !== 'all' && payment.kind !== kindFilter) return false
       return true
     })
     .sort((a, b) => parseDbUtc(b.receivedAt).getTime() - parseDbUtc(a.receivedAt).getTime()),
-    [state.payments, orderById, storeFilter, dateFilter, methodFilter, kindFilter])
+    [state.payments, orderById, storeFilter, dateFrom, dateTo, methodFilter, kindFilter])
 
   useEffect(() => {
     setPayPage(1)
-  }, [dateFilter, storeFilter, methodFilter, kindFilter])
+  }, [dateFrom, dateTo, storeFilter, methodFilter, kindFilter])
 
   const payPageCount = Math.max(1, Math.ceil(payRows.length / payPageSize))
   useEffect(() => {
@@ -700,9 +693,17 @@ export default function Sales() {
         ) : (
           <>
             <div className="toolbar-left">
-              <select value={dateFilter} onChange={(event) => setDateFilter(event.target.value as DateFilter)} className="admin-select" aria-label="Date">
-                {dateFilters.map((item) => <option key={item} value={item}>{DATE_LABEL[item]}</option>)}
-              </select>
+              <div className="sales-date-range" role="group" aria-label="Sales date range">
+                <label>
+                  <span>From</span>
+                  <input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} aria-label="Start date" />
+                </label>
+                <span className="sales-date-range-separator" aria-hidden="true">–</span>
+                <label>
+                  <span>To</span>
+                  <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} aria-label="End date" />
+                </label>
+              </div>
               <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)} className="admin-select" aria-label="Store">
                 {storeOptions}
               </select>
@@ -735,6 +736,9 @@ export default function Sales() {
                 </select>
               ) : null}
             </div>
+            {dateFrom && dateTo && dateFrom > dateTo ? (
+              <p className="sales-date-error" role="alert">End date must be on or after the start date.</p>
+            ) : null}
             {tab === 'transactions' ? (
               <div className="toolbar-right">
                 <div className="search-box">

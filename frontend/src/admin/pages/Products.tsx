@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronRight, Eye, EyeOff, PencilLine, Plus, X } from 'lucide-react'
+import { Check, ChevronRight, Eye, EyeOff, Minus, PencilLine, Plus, X } from 'lucide-react'
 import { AnimatePresence, motion, MotionConfig } from 'framer-motion'
 import { useAdminData } from '../AdminDataContext'
 import type { Product } from '../data'
@@ -755,30 +755,43 @@ export default function Products() {
           {displaySku ? <span className="stock-product-sku">SKU · {displaySku}</span> : null}
         </div>
 
-        <Field label="Quantity to add">
-          <input
-            type="number"
-            min="1"
-            step="1"
-            value={stockQty}
-            onChange={(event) => setStockQty(Math.max(1, Math.round(Number(event.target.value || 1))))}
-            className="admin-input"
-          />
-        </Field>
+        <div className="stock-form-section">
+          <Field label="Quantity to add">
+            <div className="stock-quantity-control">
+              <button type="button" className="stock-quantity-button" onClick={() => setStockQty((quantity) => Math.max(1, quantity - 1))} disabled={stockQty <= 1} aria-label="Decrease quantity">
+                <Minus size={17} />
+              </button>
+              <input
+                type="number"
+                min="1"
+                step="1"
+                value={stockQty}
+                onChange={(event) => setStockQty(Math.max(1, Math.round(Number(event.target.value || 1))))}
+                className="admin-input stock-quantity-input"
+                aria-label="Quantity to add"
+              />
+              <button type="button" className="stock-quantity-button" onClick={() => setStockQty((quantity) => quantity + 1)} aria-label="Increase quantity">
+                <Plus size={17} />
+              </button>
+            </div>
+          </Field>
+        </div>
 
-        <Field label="Store / location">
-          {state.stores.length === 0 ? (
-            <p className="form-hint">No stores yet. Add a store before receiving stock.</p>
-          ) : (
-            <select value={stockStoreId} onChange={(event) => setStockStoreId(event.target.value)} className="admin-select">
-              {state.stores.map((store) => (
-                <option key={store.id} value={store.id}>
-                  {store.name} ({store.code})
-                </option>
-              ))}
-            </select>
-          )}
-        </Field>
+        <div className="stock-form-section">
+          <Field label="Store / location">
+            {state.stores.length === 0 ? (
+              <p className="form-hint">No stores yet. Add a store before receiving stock.</p>
+            ) : (
+              <select value={stockStoreId} onChange={(event) => setStockStoreId(event.target.value)} className="admin-select">
+                {state.stores.map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name} ({store.code})
+                  </option>
+                ))}
+              </select>
+            )}
+          </Field>
+        </div>
 
         {!selectedVariant ? (
           <p className="form-hint">

@@ -744,6 +744,17 @@
   flex-direction: column;
 }
 
+.admin-route-transition {
+  min-width: 0;
+}
+
+.route-transition {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Staff pages: scrollable content area */
 .staff-page {
   flex: 1;
@@ -3812,6 +3823,12 @@
 
 /* Sales ledger */
 .sales-toolbar { gap: 12px; }
+.sales-toolbar:not(.insights-toolbar) .toolbar-left {
+  display: grid;
+  grid-template-columns: minmax(250px, 1.2fr) repeat(3, minmax(120px, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
 .sales-toolbar.transactions-toolbar {
   display: grid;
   grid-template-columns: minmax(0, auto) minmax(160px, 1fr);
@@ -3819,9 +3836,52 @@
 }
 .sales-toolbar.transactions-toolbar .toolbar-left {
   display: grid;
-  grid-template-columns: 140px 180px 140px 150px;
+  grid-template-columns: minmax(250px, 1.2fr) 180px 140px 150px;
   gap: 10px;
   min-width: 0;
+}
+.sales-date-range {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+.sales-date-range label {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+.sales-date-range input {
+  min-width: 0;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 8px;
+  border: 1px solid var(--border-beige);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink-dark);
+  font: inherit;
+  font-size: 12px;
+}
+.sales-date-range input:focus-visible {
+  outline: 2px solid rgba(128, 113, 99, 0.4);
+  outline-offset: 1px;
+}
+.sales-date-range-separator {
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+.sales-date-error {
+  grid-column: 1 / -1;
+  margin: -4px 0 0;
+  color: #984b45;
+  font-size: 12px;
+  font-weight: 600;
 }
 .sales-toolbar.transactions-toolbar .toolbar-left .admin-select {
   width: 100%;
@@ -4942,6 +5002,49 @@
   box-sizing: border-box;
 }
 
+.stock-form-section + .stock-form-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--taupe-tint);
+}
+
+.stock-quantity-control {
+  display: grid;
+  grid-template-columns: 48px 96px 48px;
+  align-items: center;
+  gap: 8px;
+}
+
+.stock-quantity-button {
+  display: grid;
+  min-height: 48px;
+  place-items: center;
+  border: 1px solid var(--border-beige);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--taupe-dark);
+  cursor: pointer;
+}
+
+.stock-quantity-button:hover:not(:disabled) {
+  border-color: var(--taupe);
+  background: var(--taupe-tint);
+}
+
+.stock-quantity-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.stock-quantity-button:focus-visible {
+  outline: 2px solid rgba(128, 113, 99, 0.4);
+  outline-offset: 1px;
+}
+
+.stock-quantity-input {
+  text-align: center;
+}
+
 .stock-product-head {
   display: flex;
   flex-direction: column;
@@ -5788,8 +5891,27 @@
 }
 
 @media (max-width: 760px) {
-  .sales-toolbar.transactions-toolbar .toolbar-left {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .sales-toolbar:not(.insights-toolbar) .toolbar-left {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sales-toolbar:not(.insights-toolbar) .toolbar-left {
+    width: 100%;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sales-toolbar:not(.insights-toolbar) .sales-date-range {
+    grid-column: 1 / -1;
+  }
+
+  .sales-date-range label {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 3px;
+  }
+
+  .sales-date-range input {
+    min-height: 44px;
   }
 
   .sales-toolbar.transactions-toolbar .toolbar-right,
