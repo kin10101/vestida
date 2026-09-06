@@ -163,16 +163,17 @@ export default function SalesTrendChart({
           )
         })}
       </div>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="sales-trend-svg"
-        role="img"
-        aria-label={`Sales trend by ${range}`}
-        onClick={() => {
-          onSelectPoint(null)
-          onExpand()
-        }}
-      >
+      <div className="sales-trend-graph-scroll">
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          className="sales-trend-svg"
+          role="img"
+          aria-label={`Sales trend by ${range}`}
+          onClick={() => {
+            onSelectPoint(null)
+            onExpand()
+          }}
+        >
         {Array.from({ length: 5 }, (_, step) => {
           const amount = (yMax * step) / 4
           const y = yFor(amount)
@@ -253,7 +254,8 @@ export default function SalesTrendChart({
             </text>
           </g>
         ) : null}
-      </svg>
+        </svg>
+      </div>
 
       <div className="chart-legend">
         {series.map((s) => (

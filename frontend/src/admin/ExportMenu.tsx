@@ -101,7 +101,7 @@ export default function ExportMenu({ label, columns, rows, showLabel = false }: 
 
   return (
     <>
-      <button type="button" className="export-trigger" onClick={openMenu} aria-haspopup="menu" aria-expanded={open} title={`Export ${label}`}>
+      <button type="button" className="export-trigger" onClick={openMenu} aria-haspopup="menu" aria-expanded={open} aria-label={`Export ${label}`} title={`Export ${label}`}>
         <Download size={15} aria-hidden="true" />
         {showLabel ? <span>Export</span> : null}
       </button>

@@ -1062,11 +1062,11 @@ export default function Sales() {
         open={Boolean(selectedOrder)}
         size="panel"
         title={selectedOrder ? `Transaction ${selectedOrder.reference}` : 'Transaction'}
-        subtitle="Staff-created record. Details cannot be edited from admin."
+        subtitle={selectedOrder ? `${formatDateTime(selectedOrder.createdAt)} · Staff-created · Read only` : 'Staff-created record. Details cannot be edited from admin.'}
         onClose={() => setSelectedOrderId(null)}
         footer={(
           <div className="modal-footer-actions transaction-footer-actions">
-            <button type="button" className="secondary-button" onClick={() => setSelectedOrderId(null)}>Close</button>
+            <button type="button" className="primary-button" onClick={() => setSelectedOrderId(null)}>Close</button>
             {canVoid ? (
               <button type="button" className="secondary-button exception-button" onClick={() => { setReason(''); setVoidOpen(true) }}><Ban size={16} />Void sale</button>
             ) : null}
@@ -1084,13 +1084,23 @@ export default function Sales() {
               <span className="transaction-type">{ORDER_TYPE_LABEL[selectedOrder.orderType] ?? selectedOrder.orderType}</span>
             </div>
 
-            <div className="transaction-summary">
-              <div><span>Customer</span><strong>{selectedOrder.customerName || 'Walk-in'}</strong></div>
-              <div><span>Store</span><strong>{selectedSummary.storeName}</strong></div>
-              <div><span>Total</span><strong>{formatPeso(selectedMoney.total)}</strong></div>
-              <div><span>Balance due</span><strong className={selectedMoney.outstanding > 0 ? 'amount-negative' : ''}>{formatPeso(selectedMoney.outstanding)}</strong></div>
+            <div className="transaction-hero-summary">
+              <div className="transaction-hero-main">
+                <div className="transaction-hero-context">
+                  <span>Customer</span>
+                  <strong>{selectedOrder.customerName || 'Walk-in'}</strong>
+                  <small>{selectedSummary.storeName}</small>
+                </div>
+                <div className="transaction-hero-total">
+                  <span>Total</span>
+                  <strong>{formatPeso(selectedMoney.total)}</strong>
+                </div>
+              </div>
+              <div className="transaction-hero-meta">
+                <span>{formatCount(selectedMoney.itemCount)} item{selectedMoney.itemCount === 1 ? '' : 's'}</span>
+                <span>Balance <strong className={selectedMoney.outstanding > 0 ? 'amount-negative' : ''}>{formatPeso(selectedMoney.outstanding)}</strong></span>
+              </div>
             </div>
-            <p className="transaction-secondary-meta">Paid {formatPeso(selectedMoney.retained)} · {formatCount(selectedMoney.itemCount)} item{selectedMoney.itemCount === 1 ? '' : 's'}</p>
 
             <section className="detail-section items-section"><h4>Items</h4>
               <div className="detail-items-head" aria-hidden="true"><span>Item</span><span>Qty</span><span>Price</span></div>
@@ -1105,7 +1115,7 @@ export default function Sales() {
                   return (
                     <div key={line.id} className="detail-item-row">
                       <span className="detail-item-name">{label}</span>
-                      <span>{line.quantity}</span>
+                      <span>×{line.quantity}</span>
                       <strong>{formatPeso(line.agreedPriceCents * line.quantity)}</strong>
                     </div>
                   )
@@ -1117,10 +1127,13 @@ export default function Sales() {
               {selectedPayments.length ? (
                 <>
                   <div className="payment-summary-line">
-                    <span>{selectedPayments[0].kind === 'payment' ? METHOD_LABEL[selectedPayments[0].method] : selectedPayments[0].kind === 'refund' ? 'Refund' : 'Void reversal'} · {formatDateTime(selectedPayments[0].receivedAt)}</span>
+                    <span>
+                      <span>{selectedPayments[0].kind === 'payment' ? METHOD_LABEL[selectedPayments[0].method] : selectedPayments[0].kind === 'refund' ? 'Refund' : 'Void reversal'}</span>
+                      <small>{formatDateTime(selectedPayments[0].receivedAt)}</small>
+                    </span>
                     <strong className={selectedPayments[0].amountCents < 0 ? 'amount-negative' : ''}>{formatPeso(selectedPayments[0].amountCents)}</strong>
                   </div>
-                  {selectedPayments.length ? (
+                  {selectedPayments.length > 1 ? (
                     <button type="button" className="text-button payment-history-toggle" onClick={() => setPaymentHistoryOpen((open) => !open)}>
                       {paymentHistoryOpen ? 'Hide payment history' : 'View payment history'}
                     </button>
