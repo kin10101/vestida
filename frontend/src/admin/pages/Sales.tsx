@@ -274,7 +274,7 @@ export default function Sales() {
   const payPageSize = 20
 
   // Insights filters
-  const [insightPeriod, setInsightPeriod] = useState<TrendPeriod>({ unit: 'day', offset: 0 })
+  const [insightPeriod, setInsightPeriod] = useState<TrendPeriod>({ unit: 'week', offset: 0 })
 
   // Drawer / modals
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
