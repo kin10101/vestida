@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import type { OrderLineItem, OrderRecord, Store } from './data'
 import { parseDbUtc } from '../shared/utils/dates'
 
@@ -21,6 +21,10 @@ interface Props {
   active: ActivePoint | null
   onSelectPoint: (point: ActivePoint | null) => void
   onExpand: () => void
+  selectedComparisonIds: string[]
+  onSelectedComparisonIdsChange: (ids: string[]) => void
+  showTotal: boolean
+  onShowTotalChange: (show: boolean) => void
 }
 
 const TOTAL_COLOR = '#8a5a44'
@@ -98,9 +102,12 @@ export default function SalesTrendChart({
   active,
   onSelectPoint,
   onExpand,
+  selectedComparisonIds,
+  onSelectedComparisonIdsChange,
+  showTotal,
+  onShowTotalChange,
 }: Props) {
   const buckets = useMemo(() => getBuckets(range), [range])
-  const [selectedComparisonIds, setSelectedComparisonIds] = useState<string[]>([])
 
   const storeAmounts = useMemo(() => new Map(
     stores.map((store) => [store.id, buckets.map((b) => orders
@@ -121,7 +128,8 @@ export default function SalesTrendChart({
   const comparisonStores = activeStores
     .filter(({ store }) => scopedStoreIds.includes(store.id) && selectedComparisonIds.includes(store.id))
     .map(({ store }) => ({ store, color: COMPARISON_COLORS[selectedComparisonIds.indexOf(store.id) % COMPARISON_COLORS.length], amounts: storeAmounts.get(store.id) ?? [] }))
-  const series = [{ store: { id: 'all', name: selectedStore === 'all' ? 'All stores' : stores.find((store) => store.id === selectedStore)?.name ?? 'Store', code: 'All' }, color: TOTAL_COLOR, amounts: totalAmounts }, ...comparisonStores]
+  const totalSeries = { store: { id: 'all', name: selectedStore === 'all' ? 'All stores' : stores.find((store) => store.id === selectedStore)?.name ?? 'Store', code: 'All' }, color: TOTAL_COLOR, amounts: totalAmounts }
+  const series = showTotal ? [totalSeries, ...comparisonStores] : comparisonStores
 
   const largestAmount = Math.max(0, ...series.flatMap((s) => s.amounts))
   const yMax = Math.max(10000, Math.ceil(largestAmount / 10000) * 10000)
@@ -140,6 +148,14 @@ export default function SalesTrendChart({
       return `C ${midpoint.toFixed(1)} ${previous.y.toFixed(1)}, ${midpoint.toFixed(1)} ${point.y.toFixed(1)}, ${point.x.toFixed(1)} ${point.y.toFixed(1)}`
     }).join(' ')
   }
+  const areaPathFor = (amounts: number[]) => {
+    const line = pathFor(amounts)
+    if (!line) return ''
+    const lastX = xFor(amounts.length - 1)
+    const firstX = xFor(0)
+    const baseline = yFor(0)
+    return `${line} L ${lastX.toFixed(1)} ${baseline.toFixed(1)} L ${firstX.toFixed(1)} ${baseline.toFixed(1)} Z`
+  }
 
   const activeStoreName = active?.storeId === 'all' ? series[0].store.name : (series.find((s) => s.store.id === active?.storeId)?.store.name ?? '')
   const tooltipX = active ? xFor(active.index) : 0
@@ -151,13 +167,13 @@ export default function SalesTrendChart({
   return (
     <div className="sales-trend-chart">
       <div className="chart-filter-row" role="group" aria-label="Sales trend stores">
-        <button type="button" className={`chart-filter-chip ${selectedComparisonIds.length === 0 ? 'active' : ''}`} onClick={() => setSelectedComparisonIds([])}>
+        <button type="button" className={`chart-filter-chip ${showTotal ? 'active' : ''}`} onClick={() => onShowTotalChange(!showTotal)} aria-pressed={showTotal}>
           <span className="chart-filter-swatch total" /> All stores
         </button>
         {activeStores.map(({ store }) => {
           const selected = selectedComparisonIds.includes(store.id)
           return (
-            <button key={store.id} type="button" className={`chart-filter-chip ${selected ? 'active' : ''}`} onClick={() => setSelectedComparisonIds((current) => selected ? current.filter((id) => id !== store.id) : [...current, store.id])}>
+            <button key={store.id} type="button" className={`chart-filter-chip ${selected ? 'active' : ''}`} onClick={() => onSelectedComparisonIdsChange(selected ? selectedComparisonIds.filter((id) => id !== store.id) : [...selectedComparisonIds, store.id])}>
               <span className="chart-filter-swatch" style={{ background: COMPARISON_COLORS[selectedComparisonIds.indexOf(store.id) % COMPARISON_COLORS.length] }} /> {store.code}
             </button>
           )
@@ -191,6 +207,8 @@ export default function SalesTrendChart({
             {b.label}
           </text>
         ))}
+
+        {showTotal ? <path d={areaPathFor(totalSeries.amounts)} fill={TOTAL_COLOR} className="chart-area-total" /> : null}
 
         {series.map((s) => (
           <path

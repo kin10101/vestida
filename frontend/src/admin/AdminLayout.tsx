@@ -1,4 +1,5 @@
 import { motion, MotionConfig, AnimatePresence } from 'framer-motion'
+import { useEffect, useRef } from 'react'
 import { BarChart3, Boxes, LayoutDashboard, LogOut, Store, Tags } from 'lucide-react'
 import { NavLink, useLocation, useOutlet } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
@@ -15,8 +16,13 @@ const navItems = [
 export default function AdminLayout() {
   const location = useLocation()
   const outlet = useOutlet()
+  const mainRef = useRef<HTMLElement>(null)
   const { signOut } = useAuth()
   const { loading, error, clearError, reload } = useAdminData()
+
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0, behavior: 'auto' })
+  }, [location.pathname])
 
   return (
     <div className="admin-app">
@@ -65,7 +71,7 @@ export default function AdminLayout() {
       </aside>
 
       <MotionConfig reducedMotion="user">
-        <main className="admin-main">
+        <main ref={mainRef} className="admin-main">
           {loading ? (
             <div className="admin-loading" role="status">Loading admin data…</div>
           ) : (

@@ -270,6 +270,8 @@ export default function Sales() {
   const [refundMethod, setRefundMethod] = useState<PaymentMethod>('cash')
   const [refundAmountCents, setRefundAmountCents] = useState(0)
   const [chartActive, setChartActive] = useState<ActivePoint | null>(null)
+  const [chartComparisonIds, setChartComparisonIds] = useState<string[]>([])
+  const [chartShowTotal, setChartShowTotal] = useState(true)
 
   const storeById = useMemo(() => new Map(state.stores.map((store) => [store.id, store])), [state.stores])
   const orderById = useMemo(() => new Map(state.orders.map((order) => [order.id, order])), [state.orders])
@@ -1047,6 +1049,10 @@ export default function Sales() {
               active={chartActive}
               onSelectPoint={setChartActive}
               onExpand={() => undefined}
+              selectedComparisonIds={chartComparisonIds}
+              onSelectedComparisonIdsChange={setChartComparisonIds}
+              showTotal={chartShowTotal}
+              onShowTotalChange={setChartShowTotal}
             />
           </section>
 

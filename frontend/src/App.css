@@ -4390,6 +4390,11 @@
   transition: opacity 0.15s ease;
 }
 
+.chart-area-total {
+  opacity: 0.12;
+  pointer-events: none;
+}
+
 .chart-point {
   pointer-events: none;
   stroke: #fff;
@@ -4452,31 +4457,68 @@
   inset: 0;
   z-index: 70;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 28px;
+  align-items: stretch;
+  padding: 0;
   background: rgba(40, 32, 26, 0.5);
 }
 
 .chart-overlay-card {
-  width: min(960px, 100%);
-  max-height: 92vh;
-  overflow: auto;
-  padding: 22px;
-  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100dvh;
+  max-height: none;
+  overflow: hidden;
+  padding: max(16px, env(safe-area-inset-top)) 22px max(16px, env(safe-area-inset-bottom));
+  border-radius: 0;
   background: #fff;
 }
 
 .chart-overlay-head {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .chart-overlay-head h3 {
   color: var(--ink-dark);
   font-size: 18px;
+}
+
+.chart-overlay-card .sales-trend-chart {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.chart-overlay-card .chart-filter-row {
+  flex: 0 0 auto;
+  min-height: 44px;
+  margin-bottom: 8px;
+}
+
+.chart-overlay-card .sales-trend-graph-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #c8b5a3 transparent;
+}
+
+.chart-overlay-card .sales-trend-svg {
+  width: 100%;
+  height: 100%;
+  min-height: 300px;
+}
+
+.chart-overlay-card .chart-legend {
+  flex: 0 0 auto;
+  padding-top: 8px;
 }
 
 @media (max-width: 760px) {
@@ -4485,41 +4527,12 @@
     gap: 18px;
   }
 
-  .chart-overlay {
-    align-items: stretch;
-    padding: 0;
-  }
-
   .chart-overlay-card {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    height: 100dvh;
-    max-height: none;
     padding: max(16px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom));
-    border-radius: 0;
   }
 
   .chart-overlay-head {
-    flex: 0 0 auto;
     margin-bottom: 8px;
-  }
-
-  .chart-overlay-card .sales-trend-chart {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    flex-direction: column;
-  }
-
-  .chart-overlay-card .sales-trend-graph-scroll {
-    flex: 1;
-    min-height: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    overscroll-behavior-x: contain;
-    scrollbar-width: thin;
-    scrollbar-color: #c8b5a3 transparent;
   }
 
   .chart-overlay-card .sales-trend-svg {

@@ -53,6 +53,8 @@ export default function Dashboard() {
   const [range, setRange] = useState<RangeKey>('week')
   const [chartExpanded, setChartExpanded] = useState(false)
   const [chartActive, setChartActive] = useState<ActivePoint | null>(null)
+  const [chartComparisonIds, setChartComparisonIds] = useState<string[]>([])
+  const [chartShowTotal, setChartShowTotal] = useState(true)
 
   const activeStores = useMemo(() => state.stores.filter((store) => store.isActive), [state.stores])
 
@@ -330,6 +332,10 @@ export default function Dashboard() {
       active={chartActive}
       onSelectPoint={setChartActive}
       onExpand={() => setChartExpanded(true)}
+      selectedComparisonIds={chartComparisonIds}
+      onSelectedComparisonIdsChange={setChartComparisonIds}
+      showTotal={chartShowTotal}
+      onShowTotalChange={setChartShowTotal}
     />
   )
 
