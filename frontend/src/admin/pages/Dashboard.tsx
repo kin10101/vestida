@@ -7,7 +7,7 @@ import { parseDbUtc } from '../../shared/utils/dates'
 import SalesTrendChart from '../SalesTrendChart'
 import type { ActivePoint } from '../SalesTrendChart'
 import RangePicker from '../RangePicker'
-import { inWindow, periodLabel, windowLabel } from '../trendRange'
+import { inWindow, windowShortLabel } from '../trendRange'
 import type { TrendPeriod } from '../trendRange'
 
 function formatPeso(valueCents: number) {
@@ -369,7 +369,7 @@ export default function Dashboard() {
         <div className="gross-sales-main">
           <span className="metric-card-label">Gross sales</span>
           <strong>{formatPeso(grossByMethod.gross)}</strong>
-          <small>{windowLabel(period)} · {filteredOrders.length} orders in view</small>
+          <small>{windowShortLabel(period)} · {filteredOrders.length} orders in view</small>
         </div>
         <div className="gross-breakdown">
           <div className="gross-breakdown-item"><span>Cash</span><strong>{formatPeso(grossByMethod.cash)}</strong></div>
@@ -380,7 +380,7 @@ export default function Dashboard() {
 
       <section className="admin-panel sales-trend-panel">
         <div className="panel-header-row">
-          <div><h3>Sales trend</h3><small>{selectedStoreLabel} · {periodLabel(period)} · tap a point or the chart to expand</small></div>
+          <div><h3>Sales trend</h3><small>{selectedStoreLabel} · {windowShortLabel(period)} · tap a point or the chart to expand</small></div>
           <div className="mini-icon-wrap"><TrendingUp size={16} /></div>
         </div>
         {chart}

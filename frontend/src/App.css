@@ -3899,72 +3899,71 @@
   position: relative;
   min-width: 0;
 }
-.sales-date-selector summary {
+.sales-date-summary {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
   min-height: 42px;
-  max-width: 250px;
   padding: 0 11px;
   border: 1px solid var(--border-beige);
   border-radius: 10px;
   background: var(--surface);
   color: var(--ink-dark);
   cursor: pointer;
-  list-style: none;
   font-size: 12px;
   font-weight: 700;
+  text-align: left;
 }
-.sales-date-selector summary::-webkit-details-marker { display: none; }
-.sales-date-selector summary span {
+.sales-date-selector.open .sales-date-summary {
+  outline: 2px solid rgba(128, 113, 99, 0.25);
+  outline-offset: 1px;
+}
+.sales-date-summary span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sales-date-selector summary svg:last-child {
+.sales-date-summary svg:last-child {
   flex: 0 0 auto;
   margin-left: auto;
   color: var(--ink-soft);
 }
-.sales-date-selector[open] summary {
-  outline: 2px solid rgba(128, 113, 99, 0.25);
-  outline-offset: 1px;
+.sales-date-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
 }
 .sales-date-popover {
   position: absolute;
-  z-index: 5;
+  z-index: 41;
   top: calc(100% + 8px);
   left: 0;
-  width: min(330px, calc(100vw - 40px));
+  width: min(300px, calc(100vw - 32px));
   padding: 12px;
   border: 1px solid var(--border-beige);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--surface);
-  box-shadow: var(--shadow);
+  box-shadow: 0 16px 44px rgba(47, 43, 38, 0.24);
 }
-.sales-date-fields {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-.sales-date-fields label {
-  display: grid;
-  gap: 5px;
+.cal-range-status {
+  min-height: 18px;
+  margin-bottom: 8px;
   color: var(--ink-soft);
-  font-size: 11px;
+  font-size: 12px;
+}
+.cal-range-status strong {
+  color: var(--ink-dark);
   font-weight: 700;
 }
-.sales-date-fields input {
-  width: 100%;
-  min-height: 40px;
-  padding: 0 7px;
-  border: 1px solid var(--border-beige);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--ink-dark);
-  font: inherit;
-  font-size: 12px;
+.cal-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 6px;
+}
+.cal-actions .sales-date-clear {
+  margin-top: 0;
 }
 .sales-date-clear {
   margin-top: 10px;
@@ -6579,38 +6578,161 @@
   z-index: 70;
 }
 
-.range-period-options {
+.range-calendar-wrap {
   position: fixed;
   z-index: 71;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 164px;
-  max-height: 320px;
-  overflow-y: auto;
-  padding: 6px;
+  width: 300px;
+  padding: 12px;
   border: 1px solid var(--border-beige);
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--surface);
   box-shadow: 0 16px 44px rgba(47, 43, 38, 0.24);
 }
 
-.range-period-options button {
-  padding: 9px 10px;
+/* ----- Calendar panel (RangePicker menu + Sales date filter) ----- */
+.cal-panel {
+  width: 100%;
+}
+.cal-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.cal-head-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-dark);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cal-nav-btn {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 0;
   border-radius: 8px;
+  background: transparent;
+  color: var(--taupe-dark);
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+.cal-nav-btn:hover:not(:disabled) { background: var(--taupe-tint); color: var(--taupe-dark); }
+.cal-nav-btn:disabled { color: #d8cbbb; cursor: default; }
+.cal-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 2px;
+}
+.cal-weekdays span {
+  padding: 2px 0 4px;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.cal-cell {
+  display: block;
+  min-height: 30px;
+}
+.cal-day {
+  position: relative;
+  width: 100%;
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
   background: transparent;
   color: var(--ink-dark);
   font: inherit;
   font-size: 13px;
   font-weight: 600;
-  text-align: left;
   cursor: pointer;
-  white-space: nowrap;
+  transition: background 150ms ease, color 150ms ease;
 }
-
-.range-period-options button:hover { background: var(--taupe-tint); }
-.range-period-options button.active { background: var(--taupe); color: #fff; }
+.cal-day:hover:not(.disabled):not(.range-start):not(.range-end) { background: var(--taupe-tint); }
+.cal-day.today { box-shadow: inset 0 0 0 1.5px var(--taupe); }
+.cal-day.in-range {
+  border-radius: 0;
+  background: rgba(128, 113, 99, 0.16);
+}
+.cal-day.range-start,
+.cal-day.range-end {
+  border-radius: 9px;
+  background: var(--taupe);
+  color: #fff;
+  font-weight: 800;
+}
+.cal-day.range-start:hover,
+.cal-day.range-end:hover { background: var(--taupe-dark); }
+.cal-day.disabled {
+  color: #d8cbbb;
+  cursor: default;
+}
+.cal-foot-hint {
+  margin: 8px 0 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  text-align: center;
+}
+.cal-months {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.cal-month {
+  min-height: 42px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink-dark);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+.cal-month:hover:not(.disabled) { background: var(--taupe-tint); }
+.cal-month.selected { background: var(--taupe); color: #fff; font-weight: 800; }
+.cal-month.disabled { color: #d8cbbb; cursor: default; }
+.cal-years {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+.cal-year {
+  min-height: 40px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--ink-dark);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease;
+}
+.cal-year:hover:not(.disabled) { background: var(--taupe-tint); }
+.cal-year.selected { background: var(--taupe); color: #fff; font-weight: 800; }
+.cal-year.disabled { color: #d8cbbb; cursor: default; }
 
 /* Compact variant used inside the Sales > Insights toolbar. */
 .range-picker-toolbar {

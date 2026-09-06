@@ -134,6 +134,34 @@ export function windowLabel(period: TrendPeriod): string {
   return `${startText} – ${MED_DATE.format(endInclusive)}`
 }
 
+const COMPACT_DATE = new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric' })
+const MONTH_ONLY = new Intl.DateTimeFormat('en-PH', { month: 'short' })
+
+/** "Sep 6" / "Aug 31 – Sep 6" without the year. The year is appended only when
+ *  the boundary isn't in the current year, so past periods stay unambiguous
+ *  while the current/last ones stay short. */
+function boundaryText(date: Date): string {
+  const nowYear = new Date().getFullYear()
+  return date.getFullYear() === nowYear ? COMPACT_DATE.format(date) : MED_DATE.format(date)
+}
+
+/** Compact real-date label for a period: drops the year for the current one,
+ *  e.g. day "Sep 6", week "Aug 31 – Sep 6", month "Sep 1 – 30", year
+ *  "Jan 1 – Dec 31". */
+export function windowShortLabel(period: TrendPeriod): string {
+  const { start, end } = windowBounds(period)
+  const endInclusive = addDays(end, -1)
+  const nowYear = new Date().getFullYear()
+  const inCurrentYear = endInclusive.getFullYear() === nowYear
+  const yearSuffix = inCurrentYear ? '' : `, ${endInclusive.getFullYear()}`
+  if (period.unit === 'day') return boundaryText(start)
+  if (period.unit === 'month') {
+    return `${MONTH_ONLY.format(start)} ${start.getDate()} – ${endInclusive.getDate()}${yearSuffix}`
+  }
+  if (period.unit === 'year') return `Jan 1 – Dec 31${yearSuffix}`
+  return `${boundaryText(start)} – ${boundaryText(endInclusive)}`
+}
+
 // ---- granularity -----------------------------------------------------------
 
 /** Default x-axis subdivision for a unit. */

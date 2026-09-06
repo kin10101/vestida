@@ -7,8 +7,7 @@ import {
   defaultGranularity,
   granularityOptions,
   GRAN_LABEL,
-  periodLabel,
-  windowLabel,
+  windowShortLabel,
 } from './trendRange'
 import type { TrendGranularity, TrendPeriod } from './trendRange'
 
@@ -181,7 +180,7 @@ export default function SalesTrendChart({
   return (
     <div className="sales-trend-chart">
       <div className="chart-meta-row">
-        <span className="chart-range-caption">{windowLabel({ unit, offset })}</span>
+        <span className="chart-range-caption">{windowShortLabel({ unit, offset })}</span>
         {granOptions.length > 1 ? (
           <div className="chart-gran" role="group" aria-label="Group sales by">
             <span className="chart-gran-label">Group by</span>
@@ -218,7 +217,7 @@ export default function SalesTrendChart({
           viewBox={`0 0 ${W} ${H}`}
           className="sales-trend-svg"
           role="img"
-          aria-label={`Sales trend ${periodLabel({ unit, offset })}`}
+          aria-label={`Sales trend ${windowShortLabel({ unit, offset })}`}
           onClick={() => {
             onSelectPoint(null)
             onExpand()

@@ -14,6 +14,7 @@ import { inWindow } from '../trendRange'
 import type { TrendPeriod } from '../trendRange'
 import ExportMenu from '../ExportMenu'
 import type { ExportRow } from '../ExportMenu'
+import DateRangeCalendar from '../DateRangeCalendar'
 
 const tabs = ['payments', 'transactions', 'insights'] as const
 type SalesTab = (typeof tabs)[number]
@@ -127,6 +128,7 @@ function DateRangeSelector({
   onFromChange: (value: string) => void
   onToChange: (value: string) => void
 }) {
+  const [open, setOpen] = useState(false)
   const label = from && to
     ? `${formatRangeDate(from)} – ${formatRangeDate(to)}`
     : from
@@ -136,42 +138,34 @@ function DateRangeSelector({
         : 'All dates'
 
   return (
-    <details className="sales-date-selector">
-      <summary aria-label="Select sales date range">
+    <div className={`sales-date-selector ${open ? 'open' : ''}`}>
+      <button
+        type="button"
+        className="sales-date-summary"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label="Select sales date range"
+        onClick={() => setOpen((value) => !value)}
+      >
         <CalendarDays size={15} aria-hidden="true" />
         <span>{label}</span>
         <ChevronDown size={15} aria-hidden="true" />
-      </summary>
-      <div className="sales-date-popover">
-        <div className="sales-date-fields">
-          <label>
-            <span>From</span>
-            <input
-              type="date"
-              value={from}
-              max={to || undefined}
-              onChange={(event) => onFromChange(event.target.value)}
-              aria-label="Start date"
+      </button>
+      {open ? (
+        <>
+          <div className="sales-date-backdrop" onClick={() => setOpen(false)} />
+          <div className="sales-date-popover" role="dialog" aria-label="Pick sales dates">
+            <DateRangeCalendar
+              from={from}
+              to={to}
+              onFromChange={onFromChange}
+              onToChange={onToChange}
+              onClose={() => setOpen(false)}
             />
-          </label>
-          <label>
-            <span>To</span>
-            <input
-              type="date"
-              value={to}
-              min={from || undefined}
-              onChange={(event) => onToChange(event.target.value)}
-              aria-label="End date"
-            />
-          </label>
-        </div>
-        {(from || to) && (
-          <button type="button" className="sales-date-clear" onClick={() => { onFromChange(''); onToChange('') }}>
-            Clear dates
-          </button>
-        )}
-      </div>
-    </details>
+          </div>
+        </>
+      ) : null}
+    </div>
   )
 }
 

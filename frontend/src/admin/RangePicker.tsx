@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { TrendPeriod } from './trendRange'
-import { periodLabel, TREND_UNITS, UNIT_LABEL } from './trendRange'
-
-const MAX_BACK = 6
+import { TREND_UNITS, UNIT_LABEL, windowShortLabel } from './trendRange'
+import PeriodCalendar from './PeriodCalendar'
 
 interface Props {
   value: TrendPeriod
@@ -16,9 +15,13 @@ interface MenuPos {
   left: number
 }
 
+const MENU_WIDTH = 300
+
 /**
  * Page-level period selector: Day/Week/Month/Year unit tabs plus prev/next
- * stepping arrows and a quick-jump lookback menu for earlier periods.
+ * stepping arrows. The center control shows the real date window and opens a
+ * calendar menu (PeriodCalendar) that adapts to the active unit — day/week
+ * pick a day or its Mon–Sun week on a month grid, month/year pick directly.
  */
 export default function RangePicker({ value, onChange, variant = 'page' }: Props) {
   const [menu, setMenu] = useState<MenuPos | null>(null)
@@ -26,13 +29,10 @@ export default function RangePicker({ value, onChange, variant = 'page' }: Props
   const chooseUnit = (unit: TrendPeriod['unit']) => onChange({ unit, offset: 0 })
   const openMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect()
-    const left = Math.max(8, Math.min(rect.left, window.innerWidth - 172))
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - MENU_WIDTH - 12))
     setMenu({ top: rect.bottom + 6, left })
   }
-  const pickOffset = (offset: number) => {
-    onChange({ ...value, offset })
-    setMenu(null)
-  }
+  const closeMenu = () => setMenu(null)
 
   return (
     <div className={`range-picker range-picker-${variant}`} aria-label="Trend period">
@@ -64,30 +64,19 @@ export default function RangePicker({ value, onChange, variant = 'page' }: Props
           <button
             type="button"
             className="range-period-current"
-            aria-haspopup="menu"
+            aria-haspopup="dialog"
             aria-expanded={Boolean(menu)}
-            aria-label="Choose period"
+            aria-label="Choose period on a calendar"
             onClick={openMenu}
           >
-            <span>{periodLabel(value)}</span>
+            <span>{windowShortLabel(value)}</span>
             <ChevronDown size={14} aria-hidden="true" />
           </button>
           {menu ? (
             <>
-              <div className="range-backdrop" onClick={() => setMenu(null)} />
-              <div className="range-period-options" role="menu" style={{ top: menu.top, left: menu.left }}>
-                {Array.from({ length: MAX_BACK + 1 }, (_, offset) => (
-                  <button
-                    key={offset}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={value.offset === offset}
-                    className={value.offset === offset ? 'active' : ''}
-                    onClick={() => pickOffset(offset)}
-                  >
-                    {periodLabel({ ...value, offset })}
-                  </button>
-                ))}
+              <div className="range-backdrop" onClick={closeMenu} />
+              <div className="range-calendar-wrap" role="dialog" aria-label="Pick a period" style={{ top: menu.top, left: menu.left }}>
+                <PeriodCalendar value={value} onChange={onChange} onClose={closeMenu} />
               </div>
             </>
           ) : null}

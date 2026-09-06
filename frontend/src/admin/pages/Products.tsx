@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronRight, Eye, EyeOff, Minus, PencilLine, Plus, X } from 'lucide-react'
 import { AnimatePresence, motion, MotionConfig } from 'framer-motion'
 import { useAdminData } from '../AdminDataContext'
@@ -65,6 +65,12 @@ export default function Products() {
   const [detailFocused, setDetailFocused] = useState(false)
   const detailPanelRef = useRef<HTMLElement>(null)
   const detailHeadingRef = useRef<HTMLHeadingElement>(null)
+
+  // Wide (two-column) layout only: the catalogue card should be the same height
+  // as the selected product's details card. The details card is the height
+  // reference; the catalogue's product list scrolls internally to fill it. The
+  // height is cleared in the narrow stacked layout (its own fixed CSS height).
+  const [catalogueHeight, setCatalogueHeight] = useState<number | null>(null)
 
   // Selected color + size drive the SKU and stock shown in the detail panel.
   const [selectedColor, setSelectedColor] = useState<string | null>(null)
@@ -159,6 +165,32 @@ export default function Products() {
     setStockStoreId((previous) => (state.stores.some((store) => store.id === previous) ? previous : (state.stores[0]?.id ?? '')))
     setStockQty(1)
   }, [selectedProduct, state.stores])
+
+  // Keep the catalogue card the same height as the details card in the wide
+  // (two-column, ≥1001px) layout. A ResizeObserver follows the details panel as
+  // it grows/shrinks (product selection, Edit-mode matrix, reflow) so the two
+  // cards always end on the same line.
+  useLayoutEffect(() => {
+    const wide = window.matchMedia('(min-width: 1001px)')
+    const apply = () => {
+      const detail = detailPanelRef.current
+      if (!wide.matches || !detail || !selectedProduct) {
+        setCatalogueHeight(null)
+        return
+      }
+      setCatalogueHeight(detail.offsetHeight)
+    }
+    apply()
+    const observer = new ResizeObserver(apply)
+    if (detailPanelRef.current) {
+      observer.observe(detailPanelRef.current)
+    }
+    wide.addEventListener?.('change', apply)
+    return () => {
+      observer.disconnect()
+      wide.removeEventListener?.('change', apply)
+    }
+  }, [selectedProduct])
 
   const selectedVariant = useMemo(() => {
     if (!selectedProduct || !selectedColor || !selectedSize) {
@@ -843,7 +875,10 @@ export default function Products() {
 
       <div className="two-column-layout product-master-detail">
         {/* ---------------- Catalogue (≈40%) ---------------- */}
-        <section className="admin-panel product-catalogue">
+        <section
+          className="admin-panel product-catalogue"
+          style={catalogueHeight ? { height: catalogueHeight } : undefined}
+        >
           <div className="catalogue-head">
             <h3>Catalogue</h3>
             <button
