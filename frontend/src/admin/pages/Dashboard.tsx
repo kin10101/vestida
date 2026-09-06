@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { motion } from 'framer-motion'
 import { ArrowUpRight, ChevronDown, MapPin, TrendingUp, Trophy, Warehouse, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAdminData } from '../AdminDataContext'
@@ -348,8 +349,14 @@ export default function Dashboard() {
             </div>
             <div className="dashboard-range-control" aria-label="Select date range">
               {rangeLabels.map((item) => (
-                <button key={item} type="button" className={range === item ? 'active' : ''} onClick={() => setRange(item)}>
-                  {item[0].toUpperCase() + item.slice(1)}
+                <button
+                  key={item}
+                  type="button"
+                  className={range === item ? 'active' : ''}
+                  onClick={() => setRange(item)}
+                >
+                  {range === item && <motion.span className="segmented-pill" layoutId="dashboard-range-pill" transition={{ duration: 0.18, ease: [0.65, 0, 0.35, 1] }} />}
+                  <span className="segmented-label">{item[0].toUpperCase() + item.slice(1)}</span>
                 </button>
               ))}
             </div>

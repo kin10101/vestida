@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { motion } from 'framer-motion'
 import { KeyRound, Plus, UserRoundCog } from 'lucide-react'
 import { useAdminData } from '../AdminDataContext'
 import type { Account } from '../data'
@@ -161,7 +162,10 @@ export default function Stores() {
       <PageHeader
         title="Stores"
         subtitle="Locations, staff assignments, and Supabase login accounts."
-        actions={<div className="segment-wrap">{tabs.map((item) => <button key={item} type="button" className={`segmented-tab ${tab === item ? 'active' : ''}`} onClick={() => setTab(item)}>{item === 'locations' ? 'Locations' : item === 'staff' ? 'Staff' : 'Accounts'}</button>)}</div>}
+        actions={<div className="segment-wrap">{tabs.map((item) => <button key={item} type="button" className={`segmented-tab ${tab === item ? 'active' : ''}`} onClick={() => setTab(item)}>
+          {tab === item && <motion.span className="segmented-pill" layoutId="stores-tab-pill" transition={{ duration: 0.18, ease: [0.65, 0, 0.35, 1] }} />}
+          <span className="segmented-label">{item === 'locations' ? 'Locations' : item === 'staff' ? 'Staff' : 'Accounts'}</span>
+        </button>)}</div>}
       />
 
       {tab === 'locations' ? <>

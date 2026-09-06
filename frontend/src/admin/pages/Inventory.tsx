@@ -397,10 +397,21 @@ export default function Inventory() {
           <div className="inventory-note">
             {groups.length > 0 ? (
               <>
-                <strong>{groups.length}</strong> product{groups.length === 1 ? '' : 's'} ·{' '}
-                <strong>{filteredRows.length}</strong> stocked variation{filteredRows.length === 1 ? '' : 's'} ·{' '}
-                <strong>{groups.reduce((sum, g) => sum + g.totalOnHand, 0)}</strong> on hand
-                {!allStores && state.stores.length ? ` at ${storeName(storeFilter)}` : ''}
+                <span className="inventory-stat">
+                  <strong>{groups.length}</strong>
+                  <span>product{groups.length === 1 ? '' : 's'}</span>
+                </span>
+                <span className="inventory-stat">
+                  <strong>{filteredRows.length}</strong>
+                  <span>stocked variation{filteredRows.length === 1 ? '' : 's'}</span>
+                </span>
+                <span className="inventory-stat">
+                  <strong>{groups.reduce((sum, g) => sum + g.totalOnHand, 0)}</strong>
+                  <span>on hand</span>
+                </span>
+                {!allStores && state.stores.length ? (
+                  <span className="inventory-note-location">At {storeName(storeFilter)}</span>
+                ) : null}
               </>
             ) : (
               'Variations with no stock records stay hidden here — add stock from the Products page.'

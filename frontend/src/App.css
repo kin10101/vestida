@@ -2757,6 +2757,8 @@
 
 .segmented-tab,
 .segmented-toggle.compact button {
+  position: relative;
+  overflow: hidden;
   flex: 0 0 auto;
   padding: 0 14px;
   border: 0;
@@ -2766,9 +2768,19 @@
 
 .segmented-tab.active,
 .segmented-toggle.compact button.active {
-  background: var(--taupe-dark);
+  background: transparent;
   color: #fff;
-  box-shadow: 0 3px 8px rgba(81, 81, 81, 0.14);
+}
+
+.segmented-label {
+  position: relative;
+  z-index: 1;
+}
+
+.segment-wrap .segmented-pill,
+.segmented-toggle.compact .segmented-pill,
+.dashboard-range-control .segmented-pill {
+  border-radius: inherit;
 }
 
 .metrics-grid {
@@ -3742,6 +3754,8 @@
 }
 
 .dashboard-range-control button {
+  position: relative;
+  overflow: hidden;
   min-height: 36px;
   padding: 0 13px;
   border: 0;
@@ -3760,9 +3774,8 @@
 }
 
 .dashboard-range-control button.active {
-  background: var(--taupe-dark);
+  background: transparent;
   color: #fff;
-  box-shadow: 0 2px 5px rgba(81, 81, 81, 0.16);
 }
 
 .dashboard-range-control button:active {
@@ -3875,6 +3888,83 @@
 .sales-date-range-separator {
   color: var(--ink-soft);
   font-size: 14px;
+}
+.sales-date-selector {
+  position: relative;
+  min-width: 0;
+}
+.sales-date-selector summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  max-width: 250px;
+  padding: 0 11px;
+  border: 1px solid var(--border-beige);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink-dark);
+  cursor: pointer;
+  list-style: none;
+  font-size: 12px;
+  font-weight: 700;
+}
+.sales-date-selector summary::-webkit-details-marker { display: none; }
+.sales-date-selector summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sales-date-selector summary svg:last-child {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--ink-soft);
+}
+.sales-date-selector[open] summary {
+  outline: 2px solid rgba(128, 113, 99, 0.25);
+  outline-offset: 1px;
+}
+.sales-date-popover {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 8px);
+  left: 0;
+  width: min(330px, calc(100vw - 40px));
+  padding: 12px;
+  border: 1px solid var(--border-beige);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.sales-date-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.sales-date-fields label {
+  display: grid;
+  gap: 5px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+}
+.sales-date-fields input {
+  width: 100%;
+  min-height: 40px;
+  padding: 0 7px;
+  border: 1px solid var(--border-beige);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-dark);
+  font: inherit;
+  font-size: 12px;
+}
+.sales-date-clear {
+  margin-top: 10px;
+  color: var(--taupe-dark);
+  font-size: 12px;
+  font-weight: 700;
 }
 .sales-date-error {
   grid-column: 1 / -1;
@@ -5182,17 +5272,47 @@
 }
 
 .inventory-note {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(3, max-content);
+  align-items: start;
+  gap: 8px 42px;
+  flex: 0 1 auto;
   margin: 0 0 12px;
   color: var(--ink-soft);
   font-size: 12px;
 }
 
-.inventory-note strong {
+.inventory-stat {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.1;
+}
+
+.inventory-stat strong {
   color: var(--taupe-dark);
+  font-size: 17px;
   font-weight: 800;
+}
+
+.inventory-stat span {
+  font-size: 9px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.inventory-note-location {
+  grid-column: 1 / -1;
+  font-size: 11px;
+}
+
+@media (max-width: 640px) {
+  .inventory-note {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    flex: 1;
+  }
 }
 
 .inventory-card-head {

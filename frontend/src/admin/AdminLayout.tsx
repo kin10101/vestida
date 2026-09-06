@@ -83,7 +83,7 @@ export default function AdminLayout() {
               ) : null}
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
-                  key={`${location.pathname}${location.search}`}
+                  key={location.pathname}
                   className="admin-route-transition"
                   initial={{ opacity: 0, y: 3 }}
                   animate={{ opacity: 1, y: 0 }}

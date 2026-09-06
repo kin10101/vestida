@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Ban, Building2, RefreshCw, TrendingUp, Undo2, WalletCards } from 'lucide-react'
+import { Ban, Building2, CalendarDays, ChevronDown, RefreshCw, TrendingUp, Undo2, WalletCards } from 'lucide-react'
+import { motion } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import { useAdminData } from '../AdminDataContext'
 import { parseDbUtc } from '../../shared/utils/dates'
@@ -124,6 +125,73 @@ function withinRange(value: string, range: RangeKey) {
   if (range === 'week') return date >= startOfWeek(now) && date <= now
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
   return date >= monthStart && date <= now
+}
+
+function formatRangeDate(value: string): string {
+  if (!value) return ''
+  const [year, month, day] = value.split('-').map(Number)
+  return new Intl.DateTimeFormat('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }).format(
+    new Date(year, month - 1, day),
+  )
+}
+
+function DateRangeSelector({
+  from,
+  to,
+  onFromChange,
+  onToChange,
+}: {
+  from: string
+  to: string
+  onFromChange: (value: string) => void
+  onToChange: (value: string) => void
+}) {
+  const label = from && to
+    ? `${formatRangeDate(from)} – ${formatRangeDate(to)}`
+    : from
+      ? `From ${formatRangeDate(from)}`
+      : to
+        ? `Until ${formatRangeDate(to)}`
+        : 'All dates'
+
+  return (
+    <details className="sales-date-selector">
+      <summary aria-label="Select sales date range">
+        <CalendarDays size={15} aria-hidden="true" />
+        <span>{label}</span>
+        <ChevronDown size={15} aria-hidden="true" />
+      </summary>
+      <div className="sales-date-popover">
+        <div className="sales-date-fields">
+          <label>
+            <span>From</span>
+            <input
+              type="date"
+              value={from}
+              max={to || undefined}
+              onChange={(event) => onFromChange(event.target.value)}
+              aria-label="Start date"
+            />
+          </label>
+          <label>
+            <span>To</span>
+            <input
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(event) => onToChange(event.target.value)}
+              aria-label="End date"
+            />
+          </label>
+        </div>
+        {(from || to) && (
+          <button type="button" className="sales-date-clear" onClick={() => { onFromChange(''); onToChange('') }}>
+            Clear dates
+          </button>
+        )}
+      </div>
+    </details>
+  )
 }
 
 // ---- money per order ------------------------------------------------------
@@ -660,7 +728,8 @@ export default function Sales() {
                 className={`segmented-tab ${tab === item ? 'active' : ''}`}
                 onClick={() => { setTab(item); setSearchParams({ tab: item }) }}
               >
-                {TAB_LABEL[item]}
+                {tab === item && <motion.span className="segmented-pill" layoutId="sales-tab-pill" transition={{ duration: 0.18, ease: [0.65, 0, 0.35, 1] }} />}
+                <span className="segmented-label">{TAB_LABEL[item]}</span>
               </button>
             ))}
           </div>
@@ -684,7 +753,8 @@ export default function Sales() {
                     className={insightRange === item ? 'active' : ''}
                     onClick={() => setInsightRange(item)}
                   >
-                    {item[0].toUpperCase() + item.slice(1)}
+                    {insightRange === item && <motion.span className="segmented-pill" layoutId="sales-range-pill" transition={{ duration: 0.18, ease: [0.65, 0, 0.35, 1] }} />}
+                    <span className="segmented-label">{item[0].toUpperCase() + item.slice(1)}</span>
                   </button>
                 ))}
               </div>
@@ -693,17 +763,7 @@ export default function Sales() {
         ) : (
           <>
             <div className="toolbar-left">
-              <div className="sales-date-range" role="group" aria-label="Sales date range">
-                <label>
-                  <span>From</span>
-                  <input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} aria-label="Start date" />
-                </label>
-                <span className="sales-date-range-separator" aria-hidden="true">–</span>
-                <label>
-                  <span>To</span>
-                  <input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} aria-label="End date" />
-                </label>
-              </div>
+              <DateRangeSelector from={dateFrom} to={dateTo} onFromChange={setDateFrom} onToChange={setDateTo} />
               <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)} className="admin-select" aria-label="Store">
                 {storeOptions}
               </select>
