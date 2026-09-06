@@ -2732,6 +2732,31 @@
 .admin-select {
   width: auto;
   min-width: 142px;
+  padding-right: 36px;
+  font-family: var(--font-sans);
+  color: var(--ink-dark);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23807163' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
+}
+
+.field-shell select {
+  padding-right: 36px;
+  font-family: var(--font-sans);
+  color: var(--ink-dark);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23807163' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 16px;
 }
 
 .admin-select:focus-visible,
@@ -3820,7 +3845,7 @@
 
   .dashboard-controls .range-picker-page {
     flex: 1 1 100%;
-    justify-content: flex-start;
+    justify-content: center;
   }
 }
 
@@ -3904,15 +3929,16 @@
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 42px;
-  padding: 0 11px;
+  min-height: 48px;
+  padding: 0 12px;
   border: 1px solid var(--border-beige);
   border-radius: 10px;
   background: var(--surface);
   color: var(--ink-dark);
   cursor: pointer;
-  font-size: 12px;
-  font-weight: 700;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 400;
   text-align: left;
 }
 .sales-date-selector.open .sales-date-summary {
@@ -3925,10 +3951,14 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.sales-date-summary svg:first-child {
+  flex: 0 0 auto;
+  color: var(--taupe);
+}
 .sales-date-summary svg:last-child {
   flex: 0 0 auto;
   margin-left: auto;
-  color: var(--ink-soft);
+  color: var(--taupe);
 }
 .sales-date-backdrop {
   position: fixed;
@@ -6812,7 +6842,7 @@
 @media (max-width: 760px) {
   .dashboard-controls .range-picker-page {
     flex: 1 1 100%;
-    justify-content: flex-start;
+    justify-content: center;
   }
 }
 
