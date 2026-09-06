@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react'
-import { motion } from 'framer-motion'
-import { ArrowUpRight, ChevronDown, MapPin, TrendingUp, Trophy, Warehouse, X } from 'lucide-react'
+import { ArrowUpRight, Building2, ChevronDown, MapPin, TrendingUp, Trophy, Warehouse, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAdminData } from '../AdminDataContext'
 import { EmptyState, PageHeader, StatusBadge } from '../ui'
 import { parseDbUtc } from '../../shared/utils/dates'
 import SalesTrendChart from '../SalesTrendChart'
-import type { ActivePoint, RangeKey } from '../SalesTrendChart'
-
-const rangeLabels: RangeKey[] = ['day', 'week', 'month']
+import type { ActivePoint } from '../SalesTrendChart'
+import RangePicker from '../RangePicker'
+import { inWindow, periodLabel, windowLabel } from '../trendRange'
+import type { TrendPeriod } from '../trendRange'
 
 function formatPeso(valueCents: number) {
   return new Intl.NumberFormat('en-PH', {
@@ -26,31 +26,11 @@ function formatActivityTime(value: string) {
   return `${day} · ${time}`
 }
 
-function startOfDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
-}
-
-function startOfWeek(date: Date) {
-  const start = startOfDay(date)
-  const daysSinceMonday = (start.getDay() + 6) % 7
-  start.setDate(start.getDate() - daysSinceMonday)
-  return start
-}
-
-function matchesRange(value: string, range: RangeKey) {
-  const date = parseDbUtc(value)
-  const now = new Date()
-  if (range === 'day') return date >= startOfDay(now) && date <= now
-  if (range === 'week') return date >= startOfWeek(now) && date <= now
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  return date >= monthStart && date <= now
-}
-
 export default function Dashboard() {
   const { state } = useAdminData()
   const navigate = useNavigate()
   const [selectedStore, setSelectedStore] = useState('all')
-  const [range, setRange] = useState<RangeKey>('week')
+  const [period, setPeriod] = useState<TrendPeriod>({ unit: 'week', offset: 0 })
   const [chartExpanded, setChartExpanded] = useState(false)
   const [chartActive, setChartActive] = useState<ActivePoint | null>(null)
   const [chartComparisonIds, setChartComparisonIds] = useState<string[]>([])
@@ -58,17 +38,17 @@ export default function Dashboard() {
 
   const activeStores = useMemo(() => state.stores.filter((store) => store.isActive), [state.stores])
 
-  const storeOptions: Array<{ id: string; name: string }> = [
-    { id: 'all', name: 'All stores' },
-    ...activeStores.map((store) => ({ id: store.id, name: store.name })),
+  const storeOptions: Array<{ id: string; label: string }> = [
+    { id: 'all', label: 'All stores' },
+    ...activeStores.map((store) => ({ id: store.id, label: store.code })),
   ]
-  const selectedStoreName = storeOptions.find((store) => store.id === selectedStore)?.name ?? 'Store'
+  const selectedStoreLabel = storeOptions.find((store) => store.id === selectedStore)?.label ?? 'Store'
 
   const filteredOrders = useMemo(
     () => state.orders.filter((order) =>
-      (selectedStore === 'all' || order.storeId === selectedStore) && matchesRange(order.createdAt, range),
+      (selectedStore === 'all' || order.storeId === selectedStore) && inWindow(order.createdAt, period),
     ),
-    [range, selectedStore, state.orders],
+    [period, selectedStore, state.orders],
   )
 
   // Gross sales with cash/gcash/bank breakdown (payment-based, like the staff app).
@@ -76,7 +56,7 @@ export default function Dashboard() {
     const orderStore = new Map(state.orders.map((order) => [order.id, order.storeId]))
     const totals = { gross: 0, cash: 0, gcash: 0, bank: 0 }
     state.payments.forEach((payment) => {
-      if (payment.kind !== 'payment' || !matchesRange(payment.receivedAt, range)) return
+      if (payment.kind !== 'payment' || !inWindow(payment.receivedAt, period)) return
       const storeId = orderStore.get(payment.orderId)
       if (selectedStore !== 'all' && storeId !== selectedStore) return
       totals.gross += payment.amountCents
@@ -85,7 +65,34 @@ export default function Dashboard() {
       else totals.bank += payment.amountCents
     })
     return totals
-  }, [range, selectedStore, state.orders, state.payments])
+  }, [period, selectedStore, state.orders, state.payments])
+
+  // Revenue + transaction count per store for the selected range, shown in the
+  // "Sales by store" card (same style as Sales > Insights). Revenue is
+  // payment-based so the rows add up to the Gross sales figure above; count
+  // mirrors the "orders in view" number. With a single store selected, only
+  // that store is listed.
+  const storeSales = useMemo(() => {
+    const orderStore = new Map(state.orders.map((order) => [order.id, order.storeId]))
+    const totals = new Map<string, { revenue: number; count: number }>()
+    state.payments.forEach((payment) => {
+      if (payment.kind !== 'payment' || !inWindow(payment.receivedAt, period)) return
+      const storeId = orderStore.get(payment.orderId)
+      if (!storeId) return
+      const entry = totals.get(storeId) ?? { revenue: 0, count: 0 }
+      entry.revenue += payment.amountCents
+      totals.set(storeId, entry)
+    })
+    state.orders.forEach((order) => {
+      if (!inWindow(order.createdAt, period)) return
+      const entry = totals.get(order.storeId) ?? { revenue: 0, count: 0 }
+      entry.count += 1
+      totals.set(order.storeId, entry)
+    })
+    const rows = activeStores.map((store) => ({ store, ...(totals.get(store.id) ?? { revenue: 0, count: 0 }) }))
+    return (selectedStore === 'all' ? rows : rows.filter((row) => row.store.id === selectedStore))
+      .sort((a, b) => b.revenue - a.revenue || b.count - a.count)
+  }, [activeStores, period, selectedStore, state.orders, state.payments])
 
   const inventoryScope = useMemo(
     () => state.inventoryUnits.filter((unit) => selectedStore === 'all' || unit.storeId === selectedStore),
@@ -324,7 +331,7 @@ export default function Dashboard() {
 
   const chart = (
     <SalesTrendChart
-      range={range}
+      range={period}
       selectedStore={selectedStore}
       stores={activeStores}
       orders={state.orders}
@@ -349,23 +356,11 @@ export default function Dashboard() {
             <div className="dashboard-store-filter">
               <MapPin size={16} aria-hidden="true" />
               <select id="dashboard-store-filter" value={selectedStore} onChange={(event) => setSelectedStore(event.target.value)} aria-label="Filter by store">
-                {storeOptions.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+                {storeOptions.map((store) => <option key={store.id} value={store.id}>{store.label}</option>)}
               </select>
               <ChevronDown size={16} aria-hidden="true" />
             </div>
-            <div className="dashboard-range-control" aria-label="Select date range">
-              {rangeLabels.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  className={range === item ? 'active' : ''}
-                  onClick={() => setRange(item)}
-                >
-                  {range === item && <motion.span className="segmented-pill" layoutId="dashboard-range-pill" transition={{ duration: 0.18, ease: [0.65, 0, 0.35, 1] }} />}
-                  <span className="segmented-label">{item[0].toUpperCase() + item.slice(1)}</span>
-                </button>
-              ))}
-            </div>
+            <RangePicker value={period} onChange={setPeriod} variant="page" />
           </div>
         }
       />
@@ -374,7 +369,7 @@ export default function Dashboard() {
         <div className="gross-sales-main">
           <span className="metric-card-label">Gross sales</span>
           <strong>{formatPeso(grossByMethod.gross)}</strong>
-          <small>{filteredOrders.length} orders in view</small>
+          <small>{windowLabel(period)} · {filteredOrders.length} orders in view</small>
         </div>
         <div className="gross-breakdown">
           <div className="gross-breakdown-item"><span>Cash</span><strong>{formatPeso(grossByMethod.cash)}</strong></div>
@@ -385,7 +380,7 @@ export default function Dashboard() {
 
       <section className="admin-panel sales-trend-panel">
         <div className="panel-header-row">
-          <div><h3>Sales trend</h3><small>{selectedStoreName} / {range} · tap a point or the chart to expand</small></div>
+          <div><h3>Sales trend</h3><small>{selectedStoreLabel} · {periodLabel(period)} · tap a point or the chart to expand</small></div>
           <div className="mini-icon-wrap"><TrendingUp size={16} /></div>
         </div>
         {chart}
@@ -393,10 +388,28 @@ export default function Dashboard() {
 
       <div className="dashboard-grid lower">
         <section className="admin-panel dashboard-clickable" onClick={() => navigate('/admin/sales?tab=insights')}>
+          <div className="panel-header-row"><h3>Sales by store</h3><div className="mini-icon-wrap"><Building2 size={16} /></div></div>
+          <div className="store-perf-list">
+            {storeSales.length > 0 ? storeSales.map((item) => (
+              <div key={item.store.id} className="store-perf-row">
+                <span className="store-perf-name">{item.store.name}</span>
+                <div className="store-perf-track">
+                  <div className="store-perf-fill" style={{ width: `${storeSales[0].revenue > 0 ? (item.revenue / storeSales[0].revenue) * 100 : 0}%` }} />
+                </div>
+                <span className="store-perf-rev">{formatPeso(item.revenue)}</span>
+                <span className="store-perf-count">{item.count} tx</span>
+              </div>
+            )) : <EmptyState title="No store sales" description="No active stores to compare." />}
+          </div>
+        </section>
+
+        <section className="admin-panel dashboard-clickable" onClick={() => navigate('/admin/sales?tab=insights')}>
           <div className="panel-header-row"><h3>Top sellers</h3><div className="mini-icon-wrap"><Trophy size={16} /></div></div>
           <div className="stack-list">{topSellers.length > 0 ? topSellers.map((item) => <div key={item.label + item.sub} className="stack-item"><div><strong>{item.label}</strong><small>{item.sub ? `${item.sub} · ` : ''}{item.quantity} units sold</small></div><strong>{formatPeso(item.revenue)}</strong></div>) : <EmptyState title="No top sellers yet" description="Product sales will appear here once orders are recorded." />}</div>
         </section>
+      </div>
 
+      <div className="dashboard-grid lower">
         <section className="admin-panel dashboard-clickable" onClick={() => navigate('/admin/inventory')}>
           <div className="panel-header-row"><h3>Stock health</h3><div className="mini-icon-wrap"><Warehouse size={16} /></div></div>
           <div className="stock-health-summary">
@@ -407,38 +420,38 @@ export default function Dashboard() {
             {lowStockProducts.length > 0 ? lowStockProducts.map((item) => <div key={item.variant.id} className="stack-item"><div><strong>{item.product?.name ?? 'Variant'}</strong><small>{item.variant.color} {item.variant.size}</small></div><StatusBadge label={`${item.inStockCount} in stock`} tone={item.inStockCount === 0 ? 'danger' : 'warning'} /></div>) : <EmptyState title="No low stock alerts" description="Inventory looks healthy for this store selection." />}
           </div>
         </section>
-      </div>
 
-      <section className="admin-panel recent-activity-panel dashboard-clickable" onClick={() => navigate('/admin/sales?tab=transactions')}>
-        <div className="panel-header-row recent-activity-head">
-          <h3>Recent activity</h3>
-          <span className="recent-activity-view">View all <ArrowUpRight size={14} aria-hidden="true" /></span>
-        </div>
-        <div className="timeline-list">
-          {activityEvents.length > 0 ? activityEvents.map((ev) => (
-            <div key={ev.key} className="timeline-item">
-              <span className={`activity-badge badge-${ev.kind}`}>{ev.pill}</span>
-              <div className="activity-main">
-                <strong className="activity-title">{ev.title}</strong>
-                <div className="activity-sub">
-                  <span>{ev.lead}</span>
-                  {ev.refText ? <span className="activity-ref">{ev.refText}</span> : null}
+        <section className="admin-panel recent-activity-panel dashboard-clickable" onClick={() => navigate('/admin/sales?tab=transactions')}>
+          <div className="panel-header-row recent-activity-head">
+            <h3>Recent activity</h3>
+            <span className="recent-activity-view">View all <ArrowUpRight size={14} aria-hidden="true" /></span>
+          </div>
+          <div className="timeline-list">
+            {activityEvents.length > 0 ? activityEvents.map((ev) => (
+              <div key={ev.key} className="timeline-item">
+                <span className={`activity-badge badge-${ev.kind}`}>{ev.pill}</span>
+                <div className="activity-main">
+                  <strong className="activity-title">{ev.title}</strong>
+                  <div className="activity-sub">
+                    <span>{ev.lead}</span>
+                    {ev.refText ? <span className="activity-ref">{ev.refText}</span> : null}
+                  </div>
+                </div>
+                <div className="activity-side">
+                  <span className={`activity-result is-${ev.resultTone}`}>{ev.result}</span>
+                  <span className="activity-time">{formatActivityTime(ev.time)}</span>
                 </div>
               </div>
-              <div className="activity-side">
-                <span className={`activity-result is-${ev.resultTone}`}>{ev.result}</span>
-                <span className="activity-time">{formatActivityTime(ev.time)}</span>
-              </div>
-            </div>
-          )) : <EmptyState title="No recent activity" description="Sales, transfers, and stock adds will appear here." />}
-        </div>
-      </section>
+            )) : <EmptyState title="No recent activity" description="Sales, transfers, and stock adds will appear here." />}
+          </div>
+        </section>
+      </div>
 
       {chartExpanded ? (
         <div className="chart-overlay" role="dialog" aria-modal="true" aria-label="Sales trend expanded" onClick={() => setChartExpanded(false)}>
           <div className="chart-overlay-card" onClick={(event) => event.stopPropagation()}>
             <div className="chart-overlay-head">
-              <h3>Sales trend · {selectedStoreName}</h3>
+              <h3>Sales trend · {selectedStoreLabel}</h3>
               <button type="button" className="icon-button chart-overlay-close" aria-label="Close chart" onClick={() => setChartExpanded(false)}><X size={20} /></button>
             </div>
             {chart}

@@ -8,7 +8,10 @@ import type { OrderStatus, PaymentKind, PaymentMethod } from '../data'
 import type { StatusTone } from '../ui'
 import { Drawer, EmptyState, Field, MetricCard, PageHeader, StatusBadge } from '../ui'
 import SalesTrendChart from '../SalesTrendChart'
-import type { ActivePoint, RangeKey } from '../SalesTrendChart'
+import type { ActivePoint } from '../SalesTrendChart'
+import RangePicker from '../RangePicker'
+import { inWindow } from '../trendRange'
+import type { TrendPeriod } from '../trendRange'
 import ExportMenu from '../ExportMenu'
 import type { ExportRow } from '../ExportMenu'
 
@@ -21,12 +24,10 @@ const TAB_LABEL: Record<SalesTab, string> = {
 }
 
 const TAB_BLURB: Record<SalesTab, string> = {
-  transactions: 'What was sold — every order with its payment and fulfillment state.',
+  transactions: 'Recent activity in detail — every order with its payment and fulfillment state, plus transfers, stock adds, adjustments, and refunds.',
   payments: 'Where the money went — tenders, refunds, and what is still owed.',
   insights: 'How sales are performing — trends, mix, and top movers.',
 }
-
-const rangeLabels: RangeKey[] = ['day', 'week', 'month']
 
 type PayFilter = 'all' | 'paid' | 'partial' | 'unpaid' | 'voided'
 type FulfillFilter = 'all' | OrderStatus
@@ -105,26 +106,6 @@ function withinDateRange(value: string, from: string, to: string) {
     if (date >= end) return false
   }
   return true
-}
-
-function startOfDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
-}
-
-function startOfWeek(date: Date) {
-  const start = startOfDay(date)
-  const daysSinceMonday = (start.getDay() + 6) % 7
-  start.setDate(start.getDate() - daysSinceMonday)
-  return start
-}
-
-function withinRange(value: string, range: RangeKey) {
-  const date = parseDbUtc(value)
-  const now = new Date()
-  if (range === 'day') return date >= startOfDay(now) && date <= now
-  if (range === 'week') return date >= startOfWeek(now) && date <= now
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  return date >= monthStart && date <= now
 }
 
 function formatRangeDate(value: string): string {
@@ -206,6 +187,34 @@ interface OrderMoney {
   outstanding: number
 }
 
+/** One stock operation (an intake or an adjustment) rebuilt from its per-unit
+ *  ledger rows — all the units written by a single DB call share a timestamp. */
+interface StockOpRow {
+  key: string
+  createdAt: string
+  store: string
+  staff: string
+  note: string
+  count: number
+  name: string
+  detail: string
+}
+
+/** A voided-sale or refund audit record (sales_exception joined to its order). */
+interface ExceptionRow {
+  key: string
+  createdAt: string
+  reference: string
+  customer: string
+  store: string
+  label: string
+  tone: StatusTone
+  amount: number
+  amountLabel: string
+  reason: string
+  processedBy: string
+}
+
 function computeMoney(
   total: number,
   itemCount: number,
@@ -251,6 +260,12 @@ export default function Sales() {
   const txPageSize = 20
   const [transferPage, setTransferPage] = useState(1)
   const transferPageSize = 20
+  const [intakePage, setIntakePage] = useState(1)
+  const intakePageSize = 20
+  const [adjustPage, setAdjustPage] = useState(1)
+  const adjustPageSize = 20
+  const [exceptionPage, setExceptionPage] = useState(1)
+  const exceptionPageSize = 20
 
   // Payments filters
   const [methodFilter, setMethodFilter] = useState<'all' | PaymentMethod>('all')
@@ -259,7 +274,7 @@ export default function Sales() {
   const payPageSize = 20
 
   // Insights filters
-  const [insightRange, setInsightRange] = useState<RangeKey>('day')
+  const [insightPeriod, setInsightPeriod] = useState<TrendPeriod>({ unit: 'day', offset: 0 })
 
   // Drawer / modals
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
@@ -406,6 +421,115 @@ export default function Sales() {
     [transferPage, transferPageSize, transferRows],
   )
 
+  // Stock intakes (`received`) and manual adjustments (`adjustment`) are the
+  // remaining stock-activity kinds that belong on this recent-activity tab.
+  // Each DB write logs one stock_movement per unit, all sharing the same
+  // created_at, so the per-unit rows are grouped back into one operation row
+  // with a piece count — the same grouping the Dashboard activity feed uses.
+  const opLedger = useMemo(() => {
+    const unitById = new Map(state.inventoryUnits.map((unit) => [unit.id, unit]))
+    const itemFor = (unitId: string | undefined) => {
+      const unit = unitId ? unitById.get(unitId) : undefined
+      const variant = unit ? variantById.get(unit.variantId) : undefined
+      const product = variant ? productById.get(variant.productId) : undefined
+      if (!product) return null
+      return {
+        name: product.name,
+        detail: variant ? [variant.color, variant.size].filter(Boolean).join(' · ') : '',
+      }
+    }
+
+    const build = (kind: 'received' | 'adjustment'): StockOpRow[] => {
+      const byOp = new Map<string, StockOpRow>()
+      state.stockMovements.forEach((movement) => {
+        if (movement.kind !== kind) return
+        if (storeFilter !== 'all' && movement.storeId !== storeFilter) return
+        if (!withinDateRange(movement.createdAt, dateFrom, dateTo)) return
+        const storeId = movement.storeId ?? ''
+        const key = `${storeId}|${movement.createdAt}`
+        let row = byOp.get(key)
+        if (!row) {
+          const item = itemFor(movement.unitId)
+          row = {
+            key: `${kind}-${key}`,
+            createdAt: movement.createdAt,
+            store: storeName(storeId),
+            staff: movement.staffName || '',
+            note: movement.note || '',
+            count: 0,
+            name: item?.name ?? 'Variant',
+            detail: item?.detail ?? '',
+          }
+          byOp.set(key, row)
+        }
+        row.count += 1
+      })
+      return Array.from(byOp.values())
+        .sort((a, b) => parseDbUtc(b.createdAt).getTime() - parseDbUtc(a.createdAt).getTime())
+    }
+
+    return { intake: build('received'), adjustment: build('adjustment') }
+  }, [dateFrom, dateTo, state.inventoryUnits, state.stockMovements, storeFilter, storeName, variantById, productById])
+
+  // Voided sales / refunds recorded against orders (sales_exception rows).
+  const exceptionRows = useMemo(() => {
+    return state.salesExceptions
+      .map((exception): ExceptionRow | null => {
+        const order = orderById.get(exception.orderId)
+        if (!order) return null
+        if (storeFilter !== 'all' && order.storeId !== storeFilter) return null
+        if (!withinDateRange(exception.createdAt, dateFrom, dateTo)) return null
+        return {
+          key: exception.id,
+          createdAt: exception.createdAt,
+          reference: order.reference || '—',
+          customer: order.customerName || 'Walk-in',
+          store: storeName(order.storeId),
+          label: exception.kind === 'void' ? 'Void' : 'Refund',
+          tone: (exception.kind === 'void' ? 'danger' : 'warning') as StatusTone,
+          amount: exception.kind === 'refund' ? exception.amountCents : 0,
+          amountLabel: exception.kind === 'refund' ? formatPeso(exception.amountCents) : '—',
+          reason: exception.reason || '',
+          processedBy: exception.processedBy || '—',
+        }
+      })
+      .filter((row): row is ExceptionRow => row !== null)
+      .sort((a, b) => parseDbUtc(b.createdAt).getTime() - parseDbUtc(a.createdAt).getTime())
+  }, [dateFrom, dateTo, orderById, state.salesExceptions, storeFilter, storeName])
+
+  useEffect(() => {
+    setIntakePage(1)
+    setAdjustPage(1)
+    setExceptionPage(1)
+  }, [dateFrom, dateTo, storeFilter])
+
+  const intakePageCount = Math.max(1, Math.ceil(opLedger.intake.length / intakePageSize))
+  useEffect(() => {
+    setIntakePage((page) => Math.min(page, intakePageCount))
+  }, [intakePageCount])
+  const visibleIntakeRows = useMemo(
+    () => opLedger.intake.slice((intakePage - 1) * intakePageSize, intakePage * intakePageSize),
+    [intakePage, intakePageSize, opLedger.intake],
+  )
+
+  const adjustPageCount = Math.max(1, Math.ceil(opLedger.adjustment.length / adjustPageSize))
+  useEffect(() => {
+    setAdjustPage((page) => Math.min(page, adjustPageCount))
+  }, [adjustPageCount])
+  const visibleAdjustRows = useMemo(
+    () => opLedger.adjustment.slice((adjustPage - 1) * adjustPageSize, adjustPage * adjustPageSize),
+    [adjustPage, adjustPageSize, opLedger.adjustment],
+  )
+
+  const exceptionPageCount = Math.max(1, Math.ceil(exceptionRows.length / exceptionPageSize))
+  useEffect(() => {
+    setExceptionPage((page) => Math.min(page, exceptionPageCount))
+  }, [exceptionPageCount])
+  const visibleExceptionRows = useMemo(
+    () => exceptionRows.slice((exceptionPage - 1) * exceptionPageSize, exceptionPage * exceptionPageSize),
+    [exceptionPage, exceptionPageSize, exceptionRows],
+  )
+
   const txKpis = useMemo(() => {
     const active = txBase.filter((s) => s.order.status !== 'cancelled')
     let gross = 0
@@ -490,9 +614,9 @@ export default function Sales() {
     .filter((s) => {
       if (s.order.status === 'cancelled') return false
       if (storeFilter !== 'all' && s.order.storeId !== storeFilter) return false
-      return withinRange(s.order.createdAt, insightRange)
+      return inWindow(s.order.createdAt, insightPeriod)
     }),
-    [summaries, storeFilter, insightRange])
+    [summaries, storeFilter, insightPeriod])
 
   const insightKpis = useMemo(() => {
     let gross = 0
@@ -702,9 +826,50 @@ export default function Sales() {
     }
   }), [payRows, orderById, storeName])
 
+  const opItemLabel = (name: string, detail: string) => (detail ? `${name} · ${detail}` : name)
+
+  const exportIntakeRows = useMemo<ExportRow[]>(() => opLedger.intake.map((row) => ({
+    date: row.createdAt,
+    values: [
+      formatDate(row.createdAt),
+      opItemLabel(row.name, row.detail),
+      row.store,
+      row.staff || '',
+      row.count,
+    ],
+  })), [opLedger.intake])
+
+  const exportAdjustRows = useMemo<ExportRow[]>(() => opLedger.adjustment.map((row) => ({
+    date: row.createdAt,
+    values: [
+      formatDate(row.createdAt),
+      opItemLabel(row.name, row.detail),
+      row.store,
+      row.note,
+      row.staff || '',
+      row.count,
+    ],
+  })), [opLedger.adjustment])
+
+  const exportExceptionRows = useMemo<ExportRow[]>(() => exceptionRows.map((row) => ({
+    date: row.createdAt,
+    values: [
+      formatDate(row.createdAt),
+      row.reference,
+      row.customer,
+      row.store,
+      row.label,
+      row.amount ? row.amount / 100 : '',
+      row.processedBy,
+    ],
+  })), [exceptionRows])
+
   const TX_EXPORT_COLUMNS = ['Reference', 'Customer', 'Item', 'Items', 'Date', 'Store', 'Fulfillment', 'Status', 'Total (PHP)']
   const TRANSFER_EXPORT_COLUMNS = ['Date', 'Item', 'Detail', 'From', 'To', 'Staff', 'Status']
   const PAY_EXPORT_COLUMNS = ['Date', 'Transaction', 'Customer', 'Store', 'Method', 'Amount (PHP)', 'Status']
+  const INTAKE_EXPORT_COLUMNS = ['Date', 'Item', 'Store', 'Added by', 'Units']
+  const ADJUST_EXPORT_COLUMNS = ['Date', 'Item', 'Store', 'Note', 'Adjusted by', 'Units']
+  const EXCEPTION_EXPORT_COLUMNS = ['Date', 'Reference', 'Customer', 'Store', 'Type', 'Amount (PHP)', 'Processed by']
 
   // =========================================================================
   // Render
@@ -747,19 +912,7 @@ export default function Sales() {
               </select>
             </div>
             <div className="toolbar-right">
-              <div className="segmented-toggle compact sales-range" aria-label="Trend period">
-                {rangeLabels.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    className={insightRange === item ? 'active' : ''}
-                    onClick={() => setInsightRange(item)}
-                  >
-                    {insightRange === item && <motion.span className="segmented-pill" layoutId="sales-range-pill" transition={{ duration: 0.18, ease: [0.65, 0, 0.35, 1] }} />}
-                    <span className="segmented-label">{item[0].toUpperCase() + item.slice(1)}</span>
-                  </button>
-                ))}
-              </div>
+              <RangePicker value={insightPeriod} onChange={setInsightPeriod} variant="toolbar" />
             </div>
           </>
         ) : (
@@ -922,6 +1075,153 @@ export default function Sales() {
               </div>
             ) : null}
           </section>
+
+          <section className="admin-panel compact-panel ledger-panel intake-history-panel">
+            <div className="panel-header-row">
+              <h3>Stock added</h3>
+              <div className="panel-head-actions">
+                <span className="ledger-count">{formatCount(opLedger.intake.length)} entries</span>
+                <ExportMenu label="stock-added" columns={INTAKE_EXPORT_COLUMNS} rows={exportIntakeRows} showLabel />
+              </div>
+            </div>
+            <div className="op-table" role="table" aria-label="Stock added history">
+              <div className="op-head op-intake" role="row">
+                <span role="columnheader">Date</span>
+                <span role="columnheader">Item</span>
+                <span role="columnheader">Store</span>
+                <span role="columnheader">Added by</span>
+                <span role="columnheader" className="num">Units</span>
+              </div>
+              <div className="op-body">
+                {visibleIntakeRows.length ? visibleIntakeRows.map((row) => (
+                  <div className="op-row op-intake" role="row" key={row.key}>
+                    <span role="cell">{formatDateTime(row.createdAt)}</span>
+                    <span role="cell"><strong>{row.name}</strong><small>{row.detail || 'Variant'}</small></span>
+                    <span role="cell">{row.store}</span>
+                    <span role="cell">{row.staff || '—'}</span>
+                    <span role="cell" className="num op-count is-add">+{formatCount(row.count)}</span>
+                  </div>
+                )) : <EmptyState title="No stock added" description="New units added with 'Add stock' will appear here." />}
+              </div>
+            </div>
+            {opLedger.intake.length > 0 ? (
+              <div className="ledger-pagination">
+                <span>Showing {(intakePage - 1) * intakePageSize + 1}-{Math.min(intakePage * intakePageSize, opLedger.intake.length)} of {formatCount(opLedger.intake.length)} entries</span>
+                <div className="pagination-actions">
+                  <button type="button" className="secondary-button" disabled={intakePage === 1} onClick={() => setIntakePage((page) => Math.max(1, page - 1))}>‹ Previous</button>
+                  <div className="pagination-pages" aria-label="Stock added pages">
+                    {Array.from({ length: Math.min(intakePageCount, 5) }, (_, index) => index + 1).map((page) => (
+                      <button key={page} type="button" className={`pagination-page ${intakePage === page ? 'active' : ''}`} aria-current={intakePage === page ? 'page' : undefined} onClick={() => setIntakePage(page)}>
+                        {page}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" className="secondary-button" disabled={intakePage === intakePageCount} onClick={() => setIntakePage((page) => Math.min(intakePageCount, page + 1))}>Next ›</button>
+                </div>
+                <span className="pagination-size">{intakePageSize} per page</span>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="admin-panel compact-panel ledger-panel adjust-history-panel">
+            <div className="panel-header-row">
+              <h3>Adjustments</h3>
+              <div className="panel-head-actions">
+                <span className="ledger-count">{formatCount(opLedger.adjustment.length)} entries</span>
+                <ExportMenu label="adjustments" columns={ADJUST_EXPORT_COLUMNS} rows={exportAdjustRows} showLabel />
+              </div>
+            </div>
+            <div className="op-table" role="table" aria-label="Stock adjustment history">
+              <div className="op-head op-adjust" role="row">
+                <span role="columnheader">Date</span>
+                <span role="columnheader">Item</span>
+                <span role="columnheader">Store</span>
+                <span role="columnheader">Note</span>
+                <span role="columnheader">Adjusted by</span>
+                <span role="columnheader" className="num">Units</span>
+              </div>
+              <div className="op-body">
+                {visibleAdjustRows.length ? visibleAdjustRows.map((row) => (
+                  <div className="op-row op-adjust" role="row" key={row.key}>
+                    <span role="cell">{formatDateTime(row.createdAt)}</span>
+                    <span role="cell"><strong>{row.name}</strong><small>{row.detail || 'Variant'}</small></span>
+                    <span role="cell">{row.store}</span>
+                    <span role="cell">{row.note || '—'}</span>
+                    <span role="cell">{row.staff || '—'}</span>
+                    <span role="cell" className="num op-count">{formatCount(row.count)}</span>
+                  </div>
+                )) : <EmptyState title="No adjustments" description="Manual stock corrections from Inventory will appear here." />}
+              </div>
+            </div>
+            {opLedger.adjustment.length > 0 ? (
+              <div className="ledger-pagination">
+                <span>Showing {(adjustPage - 1) * adjustPageSize + 1}-{Math.min(adjustPage * adjustPageSize, opLedger.adjustment.length)} of {formatCount(opLedger.adjustment.length)} entries</span>
+                <div className="pagination-actions">
+                  <button type="button" className="secondary-button" disabled={adjustPage === 1} onClick={() => setAdjustPage((page) => Math.max(1, page - 1))}>‹ Previous</button>
+                  <div className="pagination-pages" aria-label="Adjustment history pages">
+                    {Array.from({ length: Math.min(adjustPageCount, 5) }, (_, index) => index + 1).map((page) => (
+                      <button key={page} type="button" className={`pagination-page ${adjustPage === page ? 'active' : ''}`} aria-current={adjustPage === page ? 'page' : undefined} onClick={() => setAdjustPage(page)}>
+                        {page}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" className="secondary-button" disabled={adjustPage === adjustPageCount} onClick={() => setAdjustPage((page) => Math.min(adjustPageCount, page + 1))}>Next ›</button>
+                </div>
+                <span className="pagination-size">{adjustPageSize} per page</span>
+              </div>
+            ) : null}
+          </section>
+
+          <section className="admin-panel compact-panel ledger-panel exception-history-panel">
+            <div className="panel-header-row">
+              <h3>Voids & refunds</h3>
+              <div className="panel-head-actions">
+                <span className="ledger-count">{formatCount(exceptionRows.length)} entries</span>
+                <ExportMenu label="voids-refunds" columns={EXCEPTION_EXPORT_COLUMNS} rows={exportExceptionRows} showLabel />
+              </div>
+            </div>
+            <div className="ex-table" role="table" aria-label="Void and refund history">
+              <div className="ex-head" role="row">
+                <span role="columnheader">Date</span>
+                <span role="columnheader">Transaction</span>
+                <span role="columnheader">Customer</span>
+                <span role="columnheader">Store</span>
+                <span role="columnheader">Type</span>
+                <span role="columnheader" className="num">Amount</span>
+                <span role="columnheader">Processed by</span>
+              </div>
+              <div className="ex-body">
+                {visibleExceptionRows.length ? visibleExceptionRows.map((row) => (
+                  <div className="ex-row" role="row" key={row.key}>
+                    <span role="cell">{formatDateTime(row.createdAt)}</span>
+                    <span role="cell"><strong>{row.reference}</strong><small>{row.reason || 'No reason recorded'}</small></span>
+                    <span role="cell">{row.customer}</span>
+                    <span role="cell">{row.store}</span>
+                    <span role="cell"><StatusBadge label={row.label} tone={row.tone} /></span>
+                    <span role="cell" className={`num ex-amount ${row.amount ? '' : 'is-void'}`}>{row.amountLabel}</span>
+                    <span role="cell">{row.processedBy}</span>
+                  </div>
+                )) : <EmptyState title="No voids or refunds" description="Voided sales and refunds will appear here." />}
+              </div>
+            </div>
+            {exceptionRows.length > 0 ? (
+              <div className="ledger-pagination">
+                <span>Showing {(exceptionPage - 1) * exceptionPageSize + 1}-{Math.min(exceptionPage * exceptionPageSize, exceptionRows.length)} of {formatCount(exceptionRows.length)} entries</span>
+                <div className="pagination-actions">
+                  <button type="button" className="secondary-button" disabled={exceptionPage === 1} onClick={() => setExceptionPage((page) => Math.max(1, page - 1))}>‹ Previous</button>
+                  <div className="pagination-pages" aria-label="Void and refund pages">
+                    {Array.from({ length: Math.min(exceptionPageCount, 5) }, (_, index) => index + 1).map((page) => (
+                      <button key={page} type="button" className={`pagination-page ${exceptionPage === page ? 'active' : ''}`} aria-current={exceptionPage === page ? 'page' : undefined} onClick={() => setExceptionPage(page)}>
+                        {page}
+                      </button>
+                    ))}
+                  </div>
+                  <button type="button" className="secondary-button" disabled={exceptionPage === exceptionPageCount} onClick={() => setExceptionPage((page) => Math.min(exceptionPageCount, page + 1))}>Next ›</button>
+                </div>
+                <span className="pagination-size">{exceptionPageSize} per page</span>
+              </div>
+            ) : null}
+          </section>
         </div>
       ) : null}
 
@@ -1041,7 +1341,7 @@ export default function Sales() {
               <div className="mini-icon-wrap"><TrendingUp size={16} /></div>
             </div>
             <SalesTrendChart
-              range={insightRange}
+              range={insightPeriod}
               selectedStore={storeFilter}
               stores={activeStores}
               orders={state.orders}
