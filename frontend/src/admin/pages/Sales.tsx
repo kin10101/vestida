@@ -18,6 +18,7 @@ import DateRangeCalendar from '../DateRangeCalendar'
 
 const tabs = ['payments', 'transactions', 'insights'] as const
 type SalesTab = (typeof tabs)[number]
+const PAGE_SIZE_OPTIONS = [10, 20, 50] as const
 const TAB_LABEL: Record<SalesTab, string> = {
   transactions: 'Transactions',
   payments: 'Payments',
@@ -251,15 +252,15 @@ export default function Sales() {
   const [fulfillFilter, setFulfillFilter] = useState<FulfillFilter>('all')
   const [search, setSearch] = useState('')
   const [txPage, setTxPage] = useState(1)
-  const txPageSize = 20
+  const [txPageSize, setTxPageSize] = useState(10)
   const [transferPage, setTransferPage] = useState(1)
-  const transferPageSize = 20
+  const [transferPageSize, setTransferPageSize] = useState(10)
   const [intakePage, setIntakePage] = useState(1)
-  const intakePageSize = 20
+  const [intakePageSize, setIntakePageSize] = useState(10)
   const [adjustPage, setAdjustPage] = useState(1)
-  const adjustPageSize = 20
+  const [adjustPageSize, setAdjustPageSize] = useState(10)
   const [exceptionPage, setExceptionPage] = useState(1)
-  const exceptionPageSize = 20
+  const [exceptionPageSize, setExceptionPageSize] = useState(10)
 
   // Payments filters
   const [methodFilter, setMethodFilter] = useState<'all' | PaymentMethod>('all')
@@ -1016,7 +1017,13 @@ export default function Sales() {
                   </div>
                   <button type="button" className="secondary-button" disabled={txPage === txPageCount} onClick={() => setTxPage((page) => Math.min(txPageCount, page + 1))}>Next ›</button>
                 </div>
-                <label className="pagination-size">20 per page</label>
+                <label className="pagination-size">
+                  <span>Rows</span>
+                  <select value={txPageSize} onChange={(event) => { setTxPageSize(Number(event.target.value)); setTxPage(1) }} aria-label="Transactions rows per page">
+                    {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
+                  </select>
+                  <span>per page</span>
+                </label>
               </div>
             ) : null}
           </section>
@@ -1065,7 +1072,13 @@ export default function Sales() {
                   </div>
                   <button type="button" className="secondary-button" disabled={transferPage === transferPageCount} onClick={() => setTransferPage((page) => Math.min(transferPageCount, page + 1))}>Next ›</button>
                 </div>
-                <span className="pagination-size">{transferPageSize} per page</span>
+                <label className="pagination-size">
+                  <span>Rows</span>
+                  <select value={transferPageSize} onChange={(event) => { setTransferPageSize(Number(event.target.value)); setTransferPage(1) }} aria-label="Transfer history rows per page">
+                    {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
+                  </select>
+                  <span>per page</span>
+                </label>
               </div>
             ) : null}
           </section>
@@ -1112,7 +1125,13 @@ export default function Sales() {
                   </div>
                   <button type="button" className="secondary-button" disabled={intakePage === intakePageCount} onClick={() => setIntakePage((page) => Math.min(intakePageCount, page + 1))}>Next ›</button>
                 </div>
-                <span className="pagination-size">{intakePageSize} per page</span>
+                <label className="pagination-size">
+                  <span>Rows</span>
+                  <select value={intakePageSize} onChange={(event) => { setIntakePageSize(Number(event.target.value)); setIntakePage(1) }} aria-label="Stock added rows per page">
+                    {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
+                  </select>
+                  <span>per page</span>
+                </label>
               </div>
             ) : null}
           </section>
@@ -1161,7 +1180,13 @@ export default function Sales() {
                   </div>
                   <button type="button" className="secondary-button" disabled={adjustPage === adjustPageCount} onClick={() => setAdjustPage((page) => Math.min(adjustPageCount, page + 1))}>Next ›</button>
                 </div>
-                <span className="pagination-size">{adjustPageSize} per page</span>
+                <label className="pagination-size">
+                  <span>Rows</span>
+                  <select value={adjustPageSize} onChange={(event) => { setAdjustPageSize(Number(event.target.value)); setAdjustPage(1) }} aria-label="Adjustment history rows per page">
+                    {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
+                  </select>
+                  <span>per page</span>
+                </label>
               </div>
             ) : null}
           </section>
@@ -1212,7 +1237,13 @@ export default function Sales() {
                   </div>
                   <button type="button" className="secondary-button" disabled={exceptionPage === exceptionPageCount} onClick={() => setExceptionPage((page) => Math.min(exceptionPageCount, page + 1))}>Next ›</button>
                 </div>
-                <span className="pagination-size">{exceptionPageSize} per page</span>
+                <label className="pagination-size">
+                  <span>Rows</span>
+                  <select value={exceptionPageSize} onChange={(event) => { setExceptionPageSize(Number(event.target.value)); setExceptionPage(1) }} aria-label="Voids and refunds rows per page">
+                    {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
+                  </select>
+                  <span>per page</span>
+                </label>
               </div>
             ) : null}
           </section>
