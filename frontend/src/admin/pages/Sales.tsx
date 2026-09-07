@@ -1019,7 +1019,7 @@ export default function Sales() {
                 </div>
                 <label className="pagination-size">
                   <span>Rows</span>
-                  <select value={txPageSize} onChange={(event) => { setTxPageSize(Number(event.target.value)); setTxPage(1) }} aria-label="Transactions rows per page">
+                  <select className="pagination-select admin-select" value={txPageSize} onChange={(event) => { setTxPageSize(Number(event.target.value)); setTxPage(1) }} aria-label="Transactions rows per page">
                     {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
                   </select>
                   <span>per page</span>
@@ -1074,7 +1074,7 @@ export default function Sales() {
                 </div>
                 <label className="pagination-size">
                   <span>Rows</span>
-                  <select value={transferPageSize} onChange={(event) => { setTransferPageSize(Number(event.target.value)); setTransferPage(1) }} aria-label="Transfer history rows per page">
+                  <select className="pagination-select admin-select" value={transferPageSize} onChange={(event) => { setTransferPageSize(Number(event.target.value)); setTransferPage(1) }} aria-label="Transfer history rows per page">
                     {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
                   </select>
                   <span>per page</span>
@@ -1127,7 +1127,7 @@ export default function Sales() {
                 </div>
                 <label className="pagination-size">
                   <span>Rows</span>
-                  <select value={intakePageSize} onChange={(event) => { setIntakePageSize(Number(event.target.value)); setIntakePage(1) }} aria-label="Stock added rows per page">
+                  <select className="pagination-select admin-select" value={intakePageSize} onChange={(event) => { setIntakePageSize(Number(event.target.value)); setIntakePage(1) }} aria-label="Stock added rows per page">
                     {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
                   </select>
                   <span>per page</span>
@@ -1182,7 +1182,7 @@ export default function Sales() {
                 </div>
                 <label className="pagination-size">
                   <span>Rows</span>
-                  <select value={adjustPageSize} onChange={(event) => { setAdjustPageSize(Number(event.target.value)); setAdjustPage(1) }} aria-label="Adjustment history rows per page">
+                  <select className="pagination-select admin-select" value={adjustPageSize} onChange={(event) => { setAdjustPageSize(Number(event.target.value)); setAdjustPage(1) }} aria-label="Adjustment history rows per page">
                     {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
                   </select>
                   <span>per page</span>
@@ -1239,7 +1239,7 @@ export default function Sales() {
                 </div>
                 <label className="pagination-size">
                   <span>Rows</span>
-                  <select value={exceptionPageSize} onChange={(event) => { setExceptionPageSize(Number(event.target.value)); setExceptionPage(1) }} aria-label="Voids and refunds rows per page">
+                  <select className="pagination-select admin-select" value={exceptionPageSize} onChange={(event) => { setExceptionPageSize(Number(event.target.value)); setExceptionPage(1) }} aria-label="Voids and refunds rows per page">
                     {PAGE_SIZE_OPTIONS.map((size) => <option key={size} value={size}>{size}</option>)}
                   </select>
                   <span>per page</span>

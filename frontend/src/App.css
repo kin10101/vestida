@@ -6128,8 +6128,36 @@
 }
 
 .pagination-size {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
   white-space: nowrap;
 }
+
+.pagination-size > span:first-child {
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.pagination-select.admin-select {
+  min-height: 34px;
+  min-width: 64px;
+  width: 64px;
+  padding: 0 28px 0 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  background-position: right 8px center;
+  background-size: 14px;
+}
+
+@media (max-width: 760px) {
+  .pagination-size {
+    justify-content: flex-start;
+  }
+}
+
 .tx-total { font-weight: 700; color: var(--ink-dark); }
 
 /* Compact pills inside the tables — keep normal states muted */
