@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import type { TrendPeriod } from './trendRange'
 import { TREND_UNITS, UNIT_LABEL, windowShortLabel } from './trendRange'
 import PeriodCalendar from './PeriodCalendar'
+import useDismissOnScroll from './useDismissOnScroll'
 
 interface Props {
   value: TrendPeriod
@@ -25,6 +26,9 @@ const MENU_WIDTH = 300
  */
 export default function RangePicker({ value, onChange, variant = 'page' }: Props) {
   const [menu, setMenu] = useState<MenuPos | null>(null)
+  const closeMenu = useCallback(() => setMenu(null), [])
+
+  useDismissOnScroll(Boolean(menu), closeMenu)
 
   const chooseUnit = (unit: TrendPeriod['unit']) => onChange({ unit, offset: 0 })
   const openMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -32,8 +36,6 @@ export default function RangePicker({ value, onChange, variant = 'page' }: Props
     const left = Math.max(8, Math.min(rect.left, window.innerWidth - MENU_WIDTH - 12))
     setMenu({ top: rect.bottom + 6, left })
   }
-  const closeMenu = () => setMenu(null)
-
   return (
     <div className={`range-picker range-picker-${variant}`} aria-label="Trend period">
       <div className="range-unit-tabs" role="tablist" aria-label="Trend period unit">

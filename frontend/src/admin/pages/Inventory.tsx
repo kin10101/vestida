@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion, MotionConfig, useReducedMotion } from 'framer-motion'
@@ -8,6 +8,7 @@ import type { InventoryUnit, Product, ProductVariant, UnitStatus } from '../data
 import { Drawer, EmptyState, Field, PageHeader, StatusBadge, Toast } from '../ui'
 import ExportMenu from '../ExportMenu'
 import type { ExportRow } from '../ExportMenu'
+import useDismissOnScroll from '../useDismissOnScroll'
 
 type StockScope = 'all' | 'in_stock' | 'out'
 
@@ -58,7 +59,10 @@ export default function Inventory() {
   const [search, setSearch] = useState('')
   const [expandedIds, setExpandedIds] = useState<string[]>([])
   const [menu, setMenu] = useState<{ variantId: string; x: number; y: number } | null>(null)
+  const closeMenu = useCallback(() => setMenu(null), [])
   const reduceMotion = useReducedMotion()
+
+  useDismissOnScroll(Boolean(menu), closeMenu)
 
   // Variant action states.
   const [adjustVariantId, setAdjustVariantId] = useState<string | null>(null)
@@ -541,7 +545,7 @@ export default function Inventory() {
 
       {menu ? (
         <>
-          <div className="kebab-backdrop" onClick={() => setMenu(null)} aria-hidden="true" />
+          <div className="kebab-backdrop" onClick={closeMenu} aria-hidden="true" />
           <div className="kebab-menu" style={{ left: menuLeft, top: menuTop }} role="menu" aria-label="Variant actions">
             <button type="button" role="menuitem" onClick={() => openAdjust(menu.variantId)}>
               <SlidersHorizontal size={16} />

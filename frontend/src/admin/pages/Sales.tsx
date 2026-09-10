@@ -15,6 +15,7 @@ import type { TrendPeriod } from '../trendRange'
 import ExportMenu from '../ExportMenu'
 import type { ExportRow } from '../ExportMenu'
 import DateRangeCalendar from '../DateRangeCalendar'
+import useDismissOnScroll from '../useDismissOnScroll'
 
 const tabs = ['payments', 'transactions', 'insights'] as const
 type SalesTab = (typeof tabs)[number]
@@ -130,6 +131,8 @@ function DateRangeSelector({
   onToChange: (value: string) => void
 }) {
   const [open, setOpen] = useState(false)
+  const close = useCallback(() => setOpen(false), [])
+  useDismissOnScroll(open, close)
   const label = from && to
     ? `${formatRangeDate(from)} – ${formatRangeDate(to)}`
     : from
@@ -154,14 +157,14 @@ function DateRangeSelector({
       </button>
       {open ? (
         <>
-          <div className="sales-date-backdrop" onClick={() => setOpen(false)} />
+          <div className="sales-date-backdrop" onClick={close} />
           <div className="sales-date-popover" role="dialog" aria-label="Pick sales dates">
             <DateRangeCalendar
               from={from}
               to={to}
               onFromChange={onFromChange}
               onToChange={onToChange}
-              onClose={() => setOpen(false)}
+              onClose={close}
             />
           </div>
         </>

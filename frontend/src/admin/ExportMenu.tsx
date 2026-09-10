@@ -1,6 +1,7 @@
 import { Download, FileSpreadsheet } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { parseDbUtc } from '../shared/utils/dates'
+import useDismissOnScroll from './useDismissOnScroll'
 
 export type ExportRange = 'week' | 'month' | 'all'
 
@@ -83,14 +84,15 @@ function downloadFile(fileName: string, text: string) {
 export default function ExportMenu({ label, columns, rows, showLabel = false }: ExportMenuProps) {
   const [open, setOpen] = useState(false)
   const [coords, setCoords] = useState<{ top: number; right: number } | null>(null)
+  const close = useCallback(() => setOpen(false), [])
+
+  useDismissOnScroll(open, close)
 
   const openMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect()
     setCoords({ top: rect.bottom + 6, right: window.innerWidth - rect.right })
     setOpen(true)
   }
-
-  const close = () => setOpen(false)
 
   const pick = (range: ExportRange) => {
     const picked = rows.filter((row) => matchesRange(row.date, range))
