@@ -56,8 +56,12 @@ interface OrderItem {
 
 type Step = 'gate' | 'entry' | 'checkout' | 'done'
 
-function dateStamp(): string {
-  return new Date().toISOString().slice(2, 10).replace(/-/g, '')
+function localDateKey(date = new Date()): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function dateStamp(date = new Date()): string {
+  return localDateKey(date).slice(2).replace(/-/g, '')
 }
 
 function totalStock(p: CatalogProduct): number {
@@ -252,9 +256,19 @@ export default function Sale() {
 
   async function completeSale() {
     if (items.length === 0) return
-    const clientRef = `${storeCode}-${dateStamp()}-${String(Math.floor(100 + Math.random() * 900))}`
+    let clientRef = ''
     setSaleError(null)
     try {
+      const history = await apiRpc<Array<{ dateKey: string }>>('get_history', {})
+      const saleDate = new Date()
+      const todayKey = localDateKey(saleDate)
+      const dailySaleCount = history.filter((order) => order.dateKey === todayKey).length + 1
+      if (dailySaleCount > 999) {
+        throw new Error('The daily sale count has reached the three-digit order limit.')
+      }
+      const typeDigit = orderType === 'ready_made' ? '0' : '1'
+      clientRef = `${storeCode}-${dateStamp(saleDate)}-${typeDigit}${String(dailySaleCount).padStart(3, '0')}`
+
       await apiRpc('log_sale', {
         p_order_type: orderType,
         p_customer_name: customerName.trim() || null,

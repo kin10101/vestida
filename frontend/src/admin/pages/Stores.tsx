@@ -187,7 +187,7 @@ export default function Stores() {
         <div className="manager-toolbar">
           <select value={staffStoreFilter} onChange={(event) => setStaffStoreFilter(event.target.value)} className="admin-select" aria-label="Filter staff by store">
             <option value="all">All stores</option>
-            {activeStores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+            {activeStores.map((store) => <option key={store.id} value={store.id}>{store.code}</option>)}
           </select>
           <div className="toolbar-right"><button type="button" className="primary-button" onClick={() => openStaffForm()}><UserRoundCog size={16} />Add staff</button></div>
         </div>
@@ -239,7 +239,7 @@ export default function Stores() {
         <div className="form-stack">
           <Field label="Name"><input value={staffDraft.name} onChange={(event) => setStaffDraft((previous) => ({ ...previous, name: event.target.value }))} className="admin-input" /></Field>
           <Field label="Role"><input value={staffDraft.title} onChange={(event) => setStaffDraft((previous) => ({ ...previous, title: event.target.value }))} className="admin-input" /></Field>
-          <Field label="Assigned location"><select value={staffDraft.storeId} onChange={(event) => setStaffDraft((previous) => ({ ...previous, storeId: event.target.value }))} className="admin-select">{activeStores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}</select></Field>
+          <Field label="Assigned location"><select value={staffDraft.storeId} onChange={(event) => setStaffDraft((previous) => ({ ...previous, storeId: event.target.value }))} className="admin-select">{activeStores.map((store) => <option key={store.id} value={store.id}>{store.code}</option>)}</select></Field>
           <label className="check-row large"><input type="checkbox" checked={staffDraft.isActive} onChange={(event) => setStaffDraft((previous) => ({ ...previous, isActive: event.target.checked }))} /><span>Active staff member</span></label>
         </div>
       </Drawer>
@@ -264,7 +264,7 @@ export default function Stores() {
 
           {accountDraft.role === 'admin'
             ? <p className="form-note">Admins have access across all stores — no store assignment.</p>
-            : <Field label="Assigned location"><select value={accountDraft.storeId} onChange={(event) => setAccountDraft((previous) => ({ ...previous, storeId: event.target.value }))} className="admin-select">{activeStores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}</select></Field>}
+            : <Field label="Assigned location"><select value={accountDraft.storeId} onChange={(event) => setAccountDraft((previous) => ({ ...previous, storeId: event.target.value }))} className="admin-select">{activeStores.map((store) => <option key={store.id} value={store.id}>{store.code}</option>)}</select></Field>}
 
           <label className="check-row large"><input type="checkbox" checked={accountDraft.isActive} onChange={(event) => setAccountDraft((previous) => ({ ...previous, isActive: event.target.checked }))} /><span>Active account</span></label>
         </div>

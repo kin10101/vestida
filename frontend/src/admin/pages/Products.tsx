@@ -817,7 +817,7 @@ export default function Products() {
               <select value={stockStoreId} onChange={(event) => setStockStoreId(event.target.value)} className="admin-select">
                 {state.stores.map((store) => (
                   <option key={store.id} value={store.id}>
-                    {store.name} ({store.code})
+                    {store.code}
                   </option>
                 ))}
               </select>

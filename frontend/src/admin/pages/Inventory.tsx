@@ -381,7 +381,7 @@ export default function Inventory() {
           <option value="all">All stores</option>
           {state.stores.map((store) => (
             <option key={store.id} value={store.id}>
-              {store.isDeleted ? `Deleted (${store.name})` : store.name}
+              {store.isDeleted ? `Deleted (${store.code})` : store.code}
             </option>
           ))}
         </select>
@@ -651,7 +651,7 @@ export default function Inventory() {
               <select value={transferDraft.fromStoreId} onChange={(event) => changeTransferFrom(event.target.value)} className="admin-select">
                 {transferStores.map((s) => (
                   <option key={s.storeId} value={s.storeId}>
-                    {storeName(s.storeId)} ({s.count} on hand)
+                    {storeCode(s.storeId)} ({s.count} on hand)
                   </option>
                 ))}
               </select>
@@ -673,7 +673,7 @@ export default function Inventory() {
                 </option>
                 {transferToOptions.map((store) => (
                   <option key={store.id} value={store.id}>
-                    {store.name}
+                    {store.code}
                   </option>
                 ))}
               </select>

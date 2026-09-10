@@ -875,7 +875,7 @@ export default function Sales() {
   const storeOptions = (
     <>
       <option value="all">All stores</option>
-      {state.stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+      {state.stores.map((store) => <option key={store.id} value={store.id}>{store.code}</option>)}
     </>
   )
 

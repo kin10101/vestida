@@ -7,7 +7,7 @@ import { useHeaderTitle } from './headerTitle'
 import { useAuth } from '../auth/AuthContext'
 
 // Owner's direct line — TODO: replace with Gina's real number.
-const OWNER_PHONE = '+639170000000'
+const OWNER_PHONE = '09176372994'
 
 const HELP_SECTIONS = [
   {
@@ -127,19 +127,20 @@ function Header() {
           </Link>
         )}
 
-        {isHome ? (
-          <a className="gina-pill" href={`tel:${OWNER_PHONE}`}>
-            <Phone size={16} />
-            <span>Gina</span>
-          </a>
-        ) : (
+        {!isHome ? (
           <div className="staff-header-title">
             <span className="staff-header-h">{title}</span>
             {subtitle && <span className="staff-header-sub">{subtitle}</span>}
           </div>
-        )}
+        ) : <span aria-hidden="true" />}
 
         <div className="staff-header-actions">
+          {isHome && (
+            <a className="gina-pill" href={`tel:${OWNER_PHONE}`}>
+              <Phone size={16} />
+              <span>Gina</span>
+            </a>
+          )}
           {isHome && (
             <button
               type="button"

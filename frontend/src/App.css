@@ -669,7 +669,6 @@
 }
 
 .gina-pill {
-  justify-self: center;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -6871,6 +6870,43 @@
   .dashboard-controls .range-picker-page {
     flex: 1 1 100%;
     justify-content: center;
+  }
+
+  .range-picker {
+    width: 100%;
+  }
+
+  .range-picker .range-unit-tabs,
+  .range-picker .range-nav {
+    width: 100%;
+  }
+
+  .range-picker .range-unit-tabs {
+    justify-content: stretch;
+  }
+
+  .range-picker .range-unit-tabs button {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-inline: 6px;
+  }
+
+  .range-picker .range-nav {
+    justify-content: space-between;
+  }
+
+  .range-picker .range-period {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .range-picker .range-period-current {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .sales-date-selector {
+    width: 100%;
   }
 }
 
