@@ -50,10 +50,8 @@ interface InTransitBatch {
   lines: InTransitLine[]
 }
 
-// The ••• popover is shared by variant rows and in-transit transfer rows.
-type KebabMenu =
-  | { target: 'variant'; variantId: string; x: number; y: number }
-  | { target: 'transfer'; transferId: string; x: number; y: number }
+// The ••• popover opens variant actions from inventory table rows.
+type KebabMenu = { target: 'variant'; variantId: string; x: number; y: number }
 
 const KIND_LABELS: Record<string, string> = {
   received: 'Received',
@@ -84,6 +82,7 @@ export default function Inventory() {
   const [statusFilter, setStatusFilter] = useState<StockScope>('all')
   const [search, setSearch] = useState('')
   const [expandedIds, setExpandedIds] = useState<string[]>([])
+  const [expandedTransfers, setExpandedTransfers] = useState<string[]>([])
   const [menu, setMenu] = useState<KebabMenu | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
   const reduceMotion = useReducedMotion()
@@ -283,8 +282,6 @@ export default function Inventory() {
     return out.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
   }, [state.stockMovements, state.inventoryUnits, variantById, productById, allStores, storeFilter])
 
-  const inTransitPieces = inTransitBatches.reduce((sum, batch) => sum + batch.pieces, 0)
-
   const isExpanded = (productId: string) => searchActive || expandedIds.includes(productId)
 
   const toggleProduct = (productId: string) => {
@@ -294,17 +291,20 @@ export default function Inventory() {
     setExpandedIds((previous) => (previous.includes(productId) ? previous.filter((id) => id !== productId) : [...previous, productId]))
   }
 
+  const toggleTransfer = (transferId: string) => {
+    setExpandedTransfers((previous) =>
+      previous.includes(transferId)
+        ? previous.filter((id) => id !== transferId)
+        : [...previous, transferId],
+    )
+  }
+
   const openMenu = (event: MouseEvent<HTMLButtonElement>, variantId: string) => {
     const rect = event.currentTarget.getBoundingClientRect()
     setMenu({ target: 'variant', variantId, x: rect.right, y: rect.bottom })
   }
 
-  const openTransferMenu = (event: MouseEvent<HTMLButtonElement>, transferId: string) => {
-    const rect = event.currentTarget.getBoundingClientRect()
-    setMenu({ target: 'transfer', transferId, x: rect.right, y: rect.bottom })
-  }
-
-  const menuLeft = menu ? Math.max(8, Math.min(menu.x, window.innerWidth - 196)) : 0
+  const menuLeft = menu ? Math.max(8, Math.min(menu.x, window.innerWidth - 208)) : 0
   const menuTop = menu ? menu.y + 8 : 0
 
   const openAdjust = (variantId: string) => {
@@ -508,55 +508,79 @@ export default function Inventory() {
       {/* In-transit transfers (staff transfers awaiting a destination receive). */}
       {inTransitBatches.length > 0 ? (
         <section className="admin-panel inventory-overview in-transit-panel" aria-label="Transfers in transit">
-          <div className="inventory-card-head">
-            <div className="inventory-note">
-              <span className="inventory-stat">
-                <strong>{inTransitBatches.length}</strong>
-                <span>in transit</span>
-              </span>
-              <span className="inventory-stat">
-                <strong>{inTransitPieces}</strong>
-                <span>piece{inTransitPieces === 1 ? '' : 's'} on the way</span>
-              </span>
-            </div>
+          <div className="panel-header-row">
+            <h3>Pending transfers</h3>
           </div>
 
           <div className="inventory-accordion">
-            {inTransitBatches.map((batch) => (
-              <div key={batch.id} className="in-transit-batch">
-                <div className="in-transit-head">
-                  <strong className="in-transit-route">
-                    {storeCode(batch.fromStoreId)} → {storeCode(batch.toStoreId)}
-                  </strong>
-                  <small className="in-transit-meta">
-                    Sent {fmtDateTime(batch.createdAt)}
-                    {batch.staffName ? ` · ${batch.staffName}` : ''}
-                    {batch.note ? ` · ${batch.note}` : ''}
-                  </small>
-                </div>
-                <div className="in-transit-actions">
-                  <StatusBadge label="In transit" tone="info" />
+            {inTransitBatches.map((batch) => {
+              const expanded = expandedTransfers.includes(batch.id)
+              return (
+                <div key={batch.id} className={`in-transit-batch${expanded ? ' expanded' : ''}`}>
                   <button
                     type="button"
-                    className="icon-button plain inv-kebab"
-                    onClick={(event) => openTransferMenu(event, batch.id)}
-                    aria-label={`Actions for the transfer from ${storeCode(batch.fromStoreId)} to ${storeCode(batch.toStoreId)}`}
-                    aria-haspopup="menu"
+                    className="in-transit-row"
+                    onClick={() => toggleTransfer(batch.id)}
+                    aria-expanded={expanded}
+                    aria-controls={`in-transit-detail-${batch.id}`}
                   >
-                    <MoreHorizontal size={18} />
-                  </button>
-                </div>
-                <div className="in-transit-items">
-                  {batch.lines.map((line) => (
-                    <span key={line.key} className="in-transit-item" title={line.label}>
-                      <span className="inv-sku">{line.sku}</span>
-                      <span className="in-transit-item-label">{line.label}</span>
-                      <b>× {line.qty}</b>
+                    <span className="in-transit-main">
+                      <strong className="in-transit-route">
+                        {storeCode(batch.fromStoreId)} → {storeCode(batch.toStoreId)}
+                      </strong>
+                      <small className="in-transit-meta">
+                        Sent {fmtDateTime(batch.createdAt)}
+                        {batch.staffName ? ` · ${batch.staffName}` : ''}
+                        {batch.note ? ` · ${batch.note}` : ''}
+                      </small>
                     </span>
-                  ))}
+                    <ChevronDown className="inv-chevron" size={18} aria-hidden="true" />
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {expanded && (
+                      <motion.div
+                        id={`in-transit-detail-${batch.id}`}
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.65, 0, 0.35, 1] }}
+                      >
+                        <div className="in-transit-detail">
+                          <div className="in-transit-items">
+                            {batch.lines.map((line) => (
+                              <div key={line.key} className="in-transit-item" title={line.label}>
+                                <span className="inv-sku">{line.sku}</span>
+                                <span className="in-transit-item-label">{line.label}</span>
+                                <b>× {line.qty}</b>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="in-transit-actions">
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => { void runCancelTransfer(batch.id) }}
+                            >
+                              <XCircle size={16} />
+                              Cancel transfer
+                            </button>
+                            <button
+                              type="button"
+                              className="primary-button"
+                              onClick={() => { void runReceiveTransfer(batch.id) }}
+                            >
+                              <PackageCheck size={16} />
+                              Confirm transfer
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </section>
       ) : null}
@@ -715,44 +739,20 @@ export default function Inventory() {
             className="kebab-menu"
             style={{ left: menuLeft, top: menuTop }}
             role="menu"
-            aria-label={menu.target === 'variant' ? 'Variant actions' : 'Transfer actions'}
+            aria-label="Variant actions"
           >
-            {menu.target === 'variant' ? (
-              <>
-                <button type="button" role="menuitem" onClick={() => openAdjust(menu.variantId)}>
-                  <SlidersHorizontal size={16} />
-                  Adjust stock
-                </button>
-                <button type="button" role="menuitem" onClick={() => openTransfer(menu.variantId)}>
-                  <ArrowRightLeft size={16} />
-                  Transfer
-                </button>
-                <button type="button" role="menuitem" onClick={() => openHistory(menu.variantId)}>
-                  <History size={16} />
-                  Movement history
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="danger"
-                  onClick={() => { void runCancelTransfer(menu.transferId) }}
-                >
-                  <XCircle size={16} />
-                  Cancel transfer
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => { void runReceiveTransfer(menu.transferId) }}
-                >
-                  <PackageCheck size={16} />
-                  Confirm transfer
-                </button>
-              </>
-            )}
+            <button type="button" role="menuitem" onClick={() => openAdjust(menu.variantId)}>
+              <SlidersHorizontal size={16} />
+              Adjust stock
+            </button>
+            <button type="button" role="menuitem" onClick={() => openTransfer(menu.variantId)}>
+              <ArrowRightLeft size={16} />
+              Transfer
+            </button>
+            <button type="button" role="menuitem" onClick={() => openHistory(menu.variantId)}>
+              <History size={16} />
+              Movement history
+            </button>
           </div>
         </>
       ) : null}

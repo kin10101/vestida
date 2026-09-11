@@ -1,6 +1,6 @@
 ﻿import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronRight, Eye, EyeOff, Minus, PencilLine, Plus, X } from 'lucide-react'
-import { AnimatePresence, motion, MotionConfig } from 'framer-motion'
+import { motion, MotionConfig } from 'framer-motion'
 import { useAdminData } from '../AdminDataContext'
 import type { Product } from '../data'
 import { Drawer, EmptyState, Field, PageHeader, StatusBadge, Toast } from '../ui'
@@ -945,14 +945,12 @@ export default function Products() {
 
           <div className="record-stack catalogue-list">
             {visibleProducts.length > 0 ? (
-              <AnimatePresence initial={false} mode="popLayout">
-                {visibleProducts.map((product) => {
+              <>
+              {visibleProducts.map((product) => {
                 const isSelected = selectedProductIds.includes(product.id)
                 return (
-                  <motion.div
+                  <div
                     key={product.id}
-                    exit={{ opacity: 0, y: -6 }}
-                    transition={{ duration: 0.16, ease: 'easeOut' }}
                     role={bulkMode ? 'checkbox' : 'button'}
                     tabIndex={0}
                     aria-checked={bulkMode ? isSelected : undefined}
@@ -985,10 +983,10 @@ export default function Products() {
                       <span className="status-pill catalogue-item-cat">{categoryName(product.categoryId)}</span>
                     </div>
                     {!bulkMode ? <ChevronRight className="catalogue-chevron" size={18} /> : null}
-                  </motion.div>
+                  </div>
                 )
-                })}
-              </AnimatePresence>
+              })}
+              </>
             ) : (
               <EmptyState title="No matches" description="Adjust the search or filters to find the item you need." />
             )}
