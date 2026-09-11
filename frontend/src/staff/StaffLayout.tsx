@@ -5,6 +5,7 @@ import { ArrowLeft, HelpCircle, LogOut, Phone, X } from 'lucide-react'
 import { HeaderTitleProvider } from './headerTitleProvider'
 import { useHeaderTitle } from './headerTitle'
 import { useAuth } from '../auth/AuthContext'
+import { setRpcErrorHandler } from '../shared/api/client'
 
 // Owner's direct line — TODO: replace with Gina's real number.
 const OWNER_PHONE = '09176372994'
@@ -171,6 +172,20 @@ function Header() {
 export default function StaffLayout() {
   const location = useLocation()
   const outlet = useOutlet()
+  const [rpcError, setRpcError] = useState<string | null>(null)
+
+  // Surface any failed RPC as a banner. The staff pages deliberately swallow
+  // load errors (`Promise.all(...).catch(() => {})`), which used to show up as a
+  // blank screen — e.g. an empty product grid on the sale screen with no reason.
+  useEffect(() => {
+    setRpcErrorHandler((message) => setRpcError(message))
+    return () => setRpcErrorHandler(null)
+  }, [])
+
+  // A new page re-fetches, so drop the previous page's error.
+  useEffect(() => {
+    setRpcError(null)
+  }, [location.pathname])
 
   return (
     <HeaderTitleProvider>
@@ -178,6 +193,20 @@ export default function StaffLayout() {
         <div className="staff-app">
           <Header />
           <main className="staff-main">
+            {rpcError && (
+              <div className="admin-error-banner" role="alert">
+                <span className="admin-error-banner-text">{rpcError}</span>
+                <span className="admin-error-banner-actions">
+                  <button
+                    type="button"
+                    className="admin-error-retry"
+                    onClick={() => setRpcError(null)}
+                  >
+                    Dismiss
+                  </button>
+                </span>
+              </div>
+            )}
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={`${location.pathname}${location.search}`}

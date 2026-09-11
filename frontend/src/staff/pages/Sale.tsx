@@ -17,7 +17,6 @@ import {
 import type { OrderType, PaymentMethod } from '../../shared/types/sale'
 import { formatPesoWhole, pesosToNumber } from '../../shared/utils/currency'
 import { apiRpc } from '../../shared/api/client'
-import { useAuth } from '../../auth/AuthContext'
 import { useHeaderTitleValue } from '../headerTitle'
 
 interface CatalogVariant {
@@ -56,12 +55,18 @@ interface OrderItem {
 
 type Step = 'gate' | 'entry' | 'checkout' | 'done'
 
-function localDateKey(date = new Date()): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
-
-function dateStamp(date = new Date()): string {
-  return localDateKey(date).slice(2).replace(/-/g, '')
+/**
+ * Opaque idempotency key for one checkout attempt. The DISPLAYED order number is
+ * allocated server-side (atomically, per store and local day) — deriving it here
+ * from a count of the day's orders is what used to duplicate and silently drop
+ * sales on concurrent tills.
+ */
+function newAttemptKey(): string {
+  // crypto.randomUUID needs a secure context (https / localhost); fall back so a
+  // dev server on a LAN IP still works.
+  const c = globalThis.crypto
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
 function totalStock(p: CatalogProduct): number {
@@ -70,8 +75,6 @@ function totalStock(p: CatalogProduct): number {
 
 export default function Sale() {
   const navigate = useNavigate()
-  const { user } = useAuth()
-  const storeCode = user?.storeCode ?? 'STORE'
 
   const [step, setStep] = useState<Step>('gate')
   const [orderType, setOrderType] = useState<OrderType>('ready_made')
@@ -129,6 +132,11 @@ export default function Sale() {
 
   // Focus the opener of whichever card just expanded.
   const headRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+
+  // Idempotency key for the checkout attempt in flight, keyed on the cart
+  // contents: a retry of the SAME cart replays the same order instead of
+  // recording a second one, while editing the cart still gets a fresh key.
+  const attemptRef = useRef<{ cartKey: string; attemptKey: string } | null>(null)
 
   useEffect(() => {
     const head = selectedId ? headRefs.current[selectedId] : null
@@ -256,20 +264,27 @@ export default function Sale() {
 
   async function completeSale() {
     if (items.length === 0) return
-    let clientRef = ''
+    let orderNumber = ''
     setSaleError(null)
     try {
-      const history = await apiRpc<Array<{ dateKey: string }>>('get_history', {})
-      const saleDate = new Date()
-      const todayKey = localDateKey(saleDate)
-      const dailySaleCount = history.filter((order) => order.dateKey === todayKey).length + 1
-      if (dailySaleCount > 999) {
-        throw new Error('The daily sale count has reached the three-digit order limit.')
+      // One opaque attempt key per CART, reused on retry: if a previous attempt
+      // actually committed but its response was lost, the retry replays that
+      // same order instead of recording a second one. The order NUMBER shown to
+      // the customer is allocated server-side, so two tills selling at the same
+      // moment can no longer generate the same one.
+      const cartKey = JSON.stringify({
+        items: items.map((i) => [i.variantId ?? null, i.qty, i.price, i.spec ?? null]),
+        orderType,
+        paid,
+        method,
+        note: note.trim(),
+        customerName: customerName.trim(),
+      })
+      if (!attemptRef.current || attemptRef.current.cartKey !== cartKey) {
+        attemptRef.current = { cartKey, attemptKey: newAttemptKey() }
       }
-      const typeDigit = orderType === 'ready_made' ? '0' : '1'
-      clientRef = `${storeCode}-${dateStamp(saleDate)}-${typeDigit}${String(dailySaleCount).padStart(3, '0')}`
 
-      await apiRpc('log_sale', {
+      const result = await apiRpc<{ order_number?: string }>('log_sale', {
         p_order_type: orderType,
         p_customer_name: customerName.trim() || null,
         p_items: items.map((i) => ({
@@ -280,8 +295,9 @@ export default function Sale() {
         })),
         p_payment: paid > 0 ? { method, amount: paid, note: note.trim() || null } : null,
         p_care_of: null, // staff-uuid mapping not wired yet; dispatched_by is informational
-        p_client_ref: clientRef,
+        p_idempotency_key: attemptRef.current.attemptKey,
       })
+      orderNumber = result?.order_number ?? attemptRef.current.attemptKey
     } catch (err) {
       setSaleError(
         err instanceof Error && err.message
@@ -290,12 +306,13 @@ export default function Sale() {
       )
       return
     }
-    setOrderNo(clientRef)
+    setOrderNo(orderNumber)
     setStep('done')
   }
 
   function startOver() {
     setStep('gate')
+    attemptRef.current = null
     setOrderType('ready_made')
     setSaleError(null)
     setQuery('')

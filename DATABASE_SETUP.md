@@ -29,12 +29,18 @@ Run these top-to-bottom. Each file's header comment also states what it needs.
 
 | # | Script | What it does | Run after | Re-runnable |
 |---|--------|--------------|-----------|-------------|
-| 1 | `schema.sql` | **Base schema**: recovers the `public` schema + default privileges, then creates all enums, tables (store, category, product + matrix columns, product_variant, inventory_unit, stock_movement, staff, sales_order, order_line_item, payment, sales_exception) and constraints. | — (first) | ✅ |
-| 2 | `supabase_functions_rls.sql` | **Auth wiring + app layer**: adds `staff.auth_uid`/`staff.role`, `get_current_user()`; store-scoped read/write RPCs (`log_sale`, `transfer_stock`, `cancel_transfer`, `receive_stock`, `get_catalog`, `get_stock_summary`, history, etc.); and RLS policies. | 1 | ✅ |
-| 3 | `admin_functions.sql` | **Admin API**: `assert_admin()` guard plus the admin RPCs (`admin_get_state`, category/product/variant/store/staff writes, intake, orders, payments, voids/refunds, deletes). | 2 | ✅ |
-| 4 | `product_matrix.sql` | **Product matrix upgrade**: swaps in the matrix `admin_get_state`/`admin_upsert_product` (SKU prefix + colors × sizes grid) and redefines the variant unique key. Needed even on fresh DBs because #3 ships the pre-matrix RPCs. | 3 | ✅ |
-| 5 | `account_management.sql` | **Account management**: `admin_list_accounts()`, `admin_configure_account(...)`, and `resolve_login_identifier(...)` — lets the admin UI reflect Supabase Auth accounts and configure display name / role / store. | 3 (any time after #3) | ✅ |
-| 6 | `seed.sql` *(optional)* | **Bootstrap**: creates the first store (`LGA`) and links an existing Supabase Auth user to an admin staff row. Adjust the email/name/code first. Only needed for initial dev setup. | 2 | ✅ |
+| 1 | `schema.sql` | **Base schema**: recovers the `public` schema + default privileges, then creates all enums, tables (store, category, product + matrix columns, product_variant, inventory_unit, stock_movement, staff, sales_order, order_line_item, payment, sales_exception), constraints, the performance indexes, `rpc_idempotency` + `order_ref_counter`, the `order_line_item.unit_id` uniqueness index and the `updated_at` triggers. | — (first) | ✅ |
+| 2 | `supabase_functions_rls.sql` | **Auth wiring + app layer**: adds `staff.auth_uid`/`staff.role`, `get_current_user()`, `get_my_store_id()`, `is_active_staff()`; store-scoped read/write RPCs (`log_sale`, `transfer_stock`, `cancel_transfer`, `receive_stock`, `get_catalog`, `get_stock_summary`, history, etc.); and RLS policies. | 1 | ✅ |
+| 3 | `admin_functions.sql` | **Admin API**: `assert_admin()` guard plus the admin RPCs (category/store/staff writes, intake, adjustments, transfers, orders, payments, voids/refunds, deletes) and the shared product-removal worker `admin_delete_product_rows()` used by both product and category deletion. **No longer defines** `admin_get_state` / `admin_upsert_product` — see #4. | 2 | ✅ |
+| 4 | `product_matrix.sql` | **Product matrix**: **sole owner** of `admin_get_state` and `admin_upsert_product` (SKU prefix + colours × sizes grid) and of the variant matrix unique key. | 3 | ✅ |
+| 5 | `account_management.sql` | **Account management**: `admin_list_accounts()`, `admin_configure_account(...)`, and `resolve_login_identifier(...)` — lets the admin UI reflect Supabase Auth accounts and configure display name / role / store. | 4 | ✅ |
+| 6 | `admin_product_delete.sql` | **Product deletion**: `admin_delete_products()` — an admin-gated wrapper over the worker defined in #3. The Products screen's delete needs it. | 3 (needs `admin_delete_product_rows` from #3) | ✅ |
+| 7 | `seed.sql` *(optional)* | **Bootstrap**: creates the first store (`LGA`) and links an existing Supabase Auth user to an admin staff row. Adjust the email/name/code first. Only needed for initial dev setup. | 2 | ✅ |
+
+> ⚠️ `admin_product_delete.sql` used to be **missing from this list**. Without it,
+> deleting a product fails with *"function public.admin_delete_products does not
+> exist"*. If your database was set up before this guide listed it, run it now
+> (it only depends on #3).
 
 ### Recommended full run for a fresh database
 
@@ -44,7 +50,8 @@ Run these top-to-bottom. Each file's header comment also states what it needs.
 3. admin_functions.sql
 4. product_matrix.sql
 5. account_management.sql
-6. seed.sql            (optional — first store + admin link)
+6. admin_product_delete.sql
+7. seed.sql            (optional — first store + admin link)
 ```
 
 ---
@@ -72,6 +79,10 @@ them when you actually hit the described problem.
    *“No profile”* → click **Configure** to set **display name**, **role**
    (Admin or Staff), and **store** (Staff only; Admins have no store and see all).
    Saving creates/links the person’s `staff` record so they can sign in.
+   **Deactivating** an account (`is_active = false`) removes the person from the
+   *“Care of”* list, blocks sign-in if they have a linked login, and hides all
+   store data from them. The last **active** admin can't be deactivated, deleted
+   or demoted — the system always keeps one way in.
 3. **Sign in**
    The login screen accepts **email or display name**.
    - Admin → `/admin` (cross-store). Staff → `/staff` (their assigned store).
@@ -80,20 +91,29 @@ them when you actually hit the described problem.
 
 ## Re-running & upgrading
 
-- The 6 core scripts are **safe to re-run** in order at any time (idempotent).
+- The 7 core scripts are **safe to re-run** in order at any time (idempotent).
 - **Upgrading an existing DB**: the recommended practice is to re-run the whole
   list top-to-bottom — schema/function statements are guarded, so already-applied
   changes are no-ops while newer definitions are brought up to date.
+- **Apply the SQL before deploying new frontend code.** Some releases add RPC
+  parameters (e.g. `log_sale`'s `p_idempotency_key`), and a client that sends a
+  parameter the database doesn't know yet gets a hard error from PostgREST.
 - If you ever run `DROP SCHEMA public CASCADE`, `schema.sql`’s opening block
   recreates the `public` schema and restores default privileges automatically —
   but it will **not** restore dropped data; re-seed after.
+- The old trap where re-running `admin_functions.sql` silently reverted the
+  matrix RPCs is gone: `admin_get_state` and `admin_upsert_product` are defined
+  **only** in `product_matrix.sql` now. Don't re-add them elsewhere.
 
 ---
 
 ## Quick reference: what each layer is for
 
-- **schema.sql** — tables & types only (no functions, no RLS).
-- **supabase_functions_rls.sql** — the staff-facing (store-scoped) app layer.
-- **admin_functions.sql / product_matrix.sql** — the admin/back-office layer.
+- **schema.sql** — tables, types, indexes, integrity constraints and the
+  `updated_at` triggers (no RPCs, no RLS).
+- **supabase_functions_rls.sql** — the staff-facing (store-scoped) app layer + RLS.
+- **admin_functions.sql** — admin RPCs + the shared product-removal worker.
+- **product_matrix.sql** — the product matrix, and the two admin RPCs it owns.
+- **admin_product_delete.sql** — `admin_delete_products()`.
 - **account_management.sql** — bridging Supabase Auth accounts ↔ app staff/roles.
 - **seed.sql** — optional first-run demo/bootstrapping data.

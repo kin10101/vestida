@@ -222,7 +222,9 @@ export default function Transfers() {
 
   async function sendTransfer() {
     if (!toStoreId || items.length === 0) return
-    const clientRef = `TR-${Date.now().toString().slice(-6)}`
+    // Must be unique: the RPC now stores this ref and replays the original
+    // result on a retry, so a recycled ref would silently skip a real transfer.
+    const clientRef = `TR-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
     setTransferError(null)
     try {
       await apiRpc('transfer_stock', {

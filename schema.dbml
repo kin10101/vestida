@@ -76,6 +76,11 @@ Table product {
   name varchar [not null, note: 'e.g. "Barong Sports Collar", "Mestiza Top - Cazar"']
   description text
   is_active boolean [default: true]
+  sku_prefix varchar [default: '', note: 'product SKU prefix; concrete variant SKUs are PREFIX-<first 3 of colour>-<SIZE>']
+  colors "text[]" [default: '{}', note: 'matrix axis — independent list of colours']
+  sizes "text[]" [default: '{}', note: 'matrix axis — independent list of sizes']
+  cost_price integer [default: 0, note: 'centavos; product-level default cost per piece']
+  regular_price integer [default: 0, note: 'centavos; product-level selling price, inherited by every variant']
   created_at timestamp [default: `now()`]
   updated_at timestamp [default: `now()`]
 }
@@ -113,7 +118,8 @@ Table inventory_unit {
 
 Table sales_order {
   id uuid [pk, default: `gen_random_uuid()`]
-  client_ref varchar [unique, note: 'idempotency key generated on-device when queued offline; prevents double-insert if a sync retry fires after the first attempt actually succeeded']
+  client_ref varchar [unique, note: 'the DISPLAYED order number, allocated server-side by log_sale from order_ref_counter (store-day + type + 3-digit sequence, e.g. LGA-260910-0006). Legacy clients may supply their own.']
+  idempotency_key uuid [unique, note: 'opaque per-attempt key sent by the client; a retry with the same key replays the existing order instead of recording a second one. Kept separate from client_ref so the visible number stays readable.']
   store_id uuid [ref: > store.id, not null, note: 'the sale belongs to the store, not to a staff member']
   customer_name varchar [note: 'plain text, e.g. "Vivo", "Mam C." — no dedicated customer table']
   order_type order_type [not null, default: 'ready_made']
@@ -130,7 +136,7 @@ Table order_line_item {
   order_id uuid [ref: > sales_order.id, not null]
   product_variant_id uuid [ref: > product_variant.id, note: 'null if fully bespoke, no catalog match yet']
   unit_id uuid [ref: > inventory_unit.id, note: 'null until a physical piece is assigned — immediate for ready-made, later for MTO']
-  quantity integer [not null, default: 1, note: 'must be 1 whenever unit_id is set — one row per physical unit sold. Only >1 for bulk/untracked items with no unit_id. Not enforced by DBML; add a CHECK constraint (unit_id IS NULL OR quantity = 1) in migration SQL']
+  quantity integer [not null, default: 1, note: 'must be 1 whenever unit_id is set — one row per physical unit sold. Only >1 for bulk/untracked items with no unit_id.']
   agreed_price integer [not null, note: 'centavos; ACTUAL bargained price per unit — independent of regular_price and cost_price']
   spec_note text [note: 'free-text: fabric, measurements, style detail — esp. for MTO']
   created_at timestamp [default: `now()`]
@@ -138,7 +144,11 @@ Table order_line_item {
 
   indexes {
     order_id
+    product_variant_id
+    unit_id [unique, note: 'partial: WHERE unit_id IS NOT NULL — one physical piece can only appear on one line. Created in schema.sql, guarded so a database that already holds duplicates keeps running.']
   }
+
+  Note: 'CHECK order_line_item_unit_quantity_chk: unit_id IS NULL OR quantity = 1 (added NOT VALID, so it applies to new/updated rows only).'
 }
 
 Table payment {
@@ -188,5 +198,28 @@ Table stock_movement {
     unit_id
     reference_id
     (movement_type, created_at)
+    (from_store_id, movement_type, reference_id)
+    (to_store_id, movement_type, reference_id)
   }
+}
+
+Table rpc_idempotency {
+  client_ref varchar [pk]
+  rpc varchar [not null, note: 'which RPC stored this result, e.g. transfer_stock']
+  result jsonb [not null, note: 'the ORIGINAL result JSON, replayed on a retry']
+  created_at timestamp [not null, default: `now()`]
+
+  Note: 'Idempotency ledger for non-order writes (currently transfer_stock). RLS is enabled with NO policies and anon/authenticated are revoked, so only the SECURITY DEFINER RPCs touch it.'
+}
+
+Table order_ref_counter {
+  store_id uuid [not null, ref: > store.id]
+  day date [not null, note: 'the LOCAL (Asia/Manila) day']
+  next_seq integer [not null, default: 0]
+
+  indexes {
+    (store_id, day) [pk]
+  }
+
+  Note: 'Per-store per-day allocator for sales_order.client_ref. log_sale takes a number from here inside its transaction, so two tills selling at the same instant can never generate the same order number.'
 }

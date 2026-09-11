@@ -5,16 +5,12 @@ import type {
   Account,
   AccountRole,
   IntakeDraft,
-  OrderDraft,
-  OrderStatus,
-  PaymentDraft,
   RefundDraft,
   VoidSaleDraft,
   Product,
   ProductVariant,
   StaffMember,
   Store,
-  StoreAccess,
   UnitStatus,
 } from './data'
 import { apiRpc } from '../shared/api/client'
@@ -33,8 +29,6 @@ export interface AdminDataContextValue {
   toggleProductActive: (id: string) => Promise<void>
   bulkToggleProductActive: (ids: string[], isActive: boolean) => Promise<void>
   deleteProducts: (ids: string[], force?: boolean) => Promise<{ ok: boolean; reason?: string }>
-  upsertVariant: (variant: ProductVariant) => Promise<void>
-  toggleVariantActive: (id: string) => void
   upsertStore: (store: Store) => Promise<void>
   toggleStoreActive: (id: string) => Promise<void>
   deleteStore: (id: string, force: boolean) => Promise<boolean>
@@ -42,8 +36,6 @@ export interface AdminDataContextValue {
   toggleStaffActive: (id: string) => Promise<void>
   deleteStaff: (id: string) => Promise<void>
   bulkToggleStaffActive: (ids: string[], isActive: boolean) => Promise<void>
-  upsertStoreAccess: (record: StoreAccess) => void
-  disconnectStoreDevice: (storeId: string, deviceId: string) => void
   listAccounts: () => Promise<Account[]>
   configureAccount: (input: {
     authId: string
@@ -56,11 +48,11 @@ export interface AdminDataContextValue {
   adjustInventoryUnit: (unitId: string, nextStatus: UnitStatus, note: string, staffName: string) => Promise<void>
   bulkAdjustInventoryUnits: (unitIds: string[], nextStatus: UnitStatus, note: string, staffName: string) => Promise<void>
   transferStock: (input: { fromStoreId: string; toStoreId: string; items: Array<{ variantId: string; quantity: number }>; note: string }) => Promise<void>
-  upsertOrder: (draft: OrderDraft) => Promise<void>
-  updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>
-  addPayment: (draft: PaymentDraft) => Promise<void>
-  voidSale: (draft: VoidSaleDraft) => Promise<void>
-  refundSale: (draft: RefundDraft) => Promise<void>
+  // Voiding/refunding can be REJECTED by the server (already voided, refund
+  // exceeds what was paid, order not found), so both report success and the
+  // caller keeps its dialog open on failure.
+  voidSale: (draft: VoidSaleDraft) => Promise<boolean>
+  refundSale: (draft: RefundDraft) => Promise<boolean>
 }
 
 const AdminDataContext = createContext<AdminDataContextValue | undefined>(undefined)
@@ -249,25 +241,6 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
     bulkToggleProductActive: async (ids, isActive) => {
       await persist(() => apiRpc('admin_toggle_products_active', { p_ids: ids, p_is_active: isActive }))
     },
-    upsertVariant: async (variant) => {
-      await persist(() => apiRpc('admin_upsert_variant', {
-        p_id: isUuid(variant.id) ? variant.id : null,
-        p_product_id: variant.productId,
-        p_color: variant.color,
-        p_size: variant.size,
-        p_sku: variant.sku,
-        p_regular_price_cents: variant.regularPriceCents,
-      }))
-    },
-    toggleVariantActive: (id) => {
-      // product_variant has no is_active column in the DB (schema gap) — UI-only toggle.
-      setState((previous) => ({
-        ...previous,
-        productVariants: previous.productVariants.map((item) =>
-          item.id === id ? { ...item, isActive: !item.isActive } : item,
-        ),
-      }))
-    },
     upsertStore: async (store) => {
       await persist(() => apiRpc('admin_upsert_store', {
         p_id: isUuid(store.id) ? store.id : null,
@@ -317,39 +290,17 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
     bulkToggleStaffActive: async (ids, isActive) => {
       await persist(() => apiRpc('admin_toggle_staff_active', { p_ids: ids, p_is_active: isActive }))
     },
-    upsertStoreAccess: (record) => {
-      // No store_access table in the DB (schema gap) — kept local-only.
-      setState((previous) => {
-        const existing = previous.storeAccess.find((item) => item.storeId === record.storeId)
-        const nextRecord: StoreAccess = {
-          ...record,
-          username: record.username.trim(),
-          password: record.password || existing?.password || '',
-          passwordUpdatedAt: record.password ? new Date().toISOString() : existing?.passwordUpdatedAt ?? null,
-          devices: existing?.devices ?? record.devices,
-        }
-
-        return {
-          ...previous,
-          storeAccess: existing
-            ? previous.storeAccess.map((item) => (item.storeId === record.storeId ? nextRecord : item))
-            : [...previous.storeAccess, nextRecord],
-        }
-      })
-    },
-    disconnectStoreDevice: (storeId, deviceId) => {
-      setState((previous) => ({
-        ...previous,
-        storeAccess: previous.storeAccess.map((item) =>
-          item.storeId === storeId
-            ? { ...item, devices: item.devices.filter((device) => device.id !== deviceId) }
-            : item,
-        ),
-      }))
-    },
     listAccounts: async () => {
-      const data = await apiRpc<{ accounts: Account[] }>('admin_list_accounts', {})
-      return data?.accounts ?? []
+      try {
+        const data = await apiRpc<{ accounts: Account[] }>('admin_list_accounts', {})
+        return data?.accounts ?? []
+      } catch (err) {
+        // Stores.tsx loads this in a fire-and-forget effect that ignores
+        // failures, which left a silently empty Accounts tab. Route it through
+        // the admin banner instead of returning nothing with no explanation.
+        setError(err instanceof Error ? err.message : 'Could not load accounts')
+        return []
+      }
     },
     configureAccount: async (input) => {
       return persist(() => apiRpc('admin_configure_account', {
@@ -383,43 +334,11 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
         p_note: note || null,
       }))
     },
-    upsertOrder: async (draft) => {
-      await persist(() => apiRpc('admin_upsert_order', {
-        p_draft: {
-          id: draft.id ?? null,
-          storeId: draft.storeId,
-          customerName: draft.customerName,
-          orderType: draft.orderType,
-          status: draft.status,
-          reference: draft.reference,
-          notes: draft.notes,
-          items: draft.items.map((item) => ({
-            variantId: item.variantId ?? null,
-            description: item.description,
-            quantity: item.quantity,
-            agreedPriceCents: item.agreedPriceCents,
-            unitId: item.unitId ?? null,
-          })),
-        },
-      }))
-    },
-    updateOrderStatus: async (orderId, status) => {
-      await persist(() => apiRpc('admin_update_order_status', { p_order_id: orderId, p_status: status }))
-    },
-    addPayment: async (draft) => {
-      await persist(() => apiRpc('admin_add_payment', {
-        p_order_id: draft.orderId,
-        p_amount_cents: draft.amountCents,
-        p_method: draft.method,
-        p_received_by: null,
-        p_note: null,
-      }))
-    },
     voidSale: async (draft) => {
-      await persist(() => apiRpc('admin_void_sale', { p_order_id: draft.orderId, p_reason: draft.reason }))
+      return persist(() => apiRpc('admin_void_sale', { p_order_id: draft.orderId, p_reason: draft.reason }))
     },
     refundSale: async (draft) => {
-      await persist(() => apiRpc('admin_refund_sale', {
+      return persist(() => apiRpc('admin_refund_sale', {
         p_order_id: draft.orderId,
         p_amount_cents: draft.amountCents,
         p_method: draft.method,

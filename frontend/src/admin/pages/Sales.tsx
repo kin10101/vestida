@@ -752,22 +752,27 @@ export default function Sales() {
     setRefundOpen(true)
   }
 
-  const submitVoid = () => {
+  const submitVoid = async () => {
     if (!selectedOrder || !reason.trim()) return
-    voidSale({ orderId: selectedOrder.id, reason, processedBy: 'Admin' })
+    // Keep the dialog open when the server refuses the void (e.g. it is already
+    // voided) — the reason appears in the error banner. Closing first made a
+    // rejected void look like it had succeeded.
+    const ok = await voidSale({ orderId: selectedOrder.id, reason, processedBy: 'Admin' })
+    if (!ok) return
     setVoidOpen(false)
     setReason('')
   }
 
-  const submitRefund = () => {
+  const submitRefund = async () => {
     if (!selectedOrder || !reason.trim() || refundAmountCents <= 0) return
-    refundSale({
+    const ok = await refundSale({
       orderId: selectedOrder.id,
       reason,
       amountCents: refundAmountCents,
       method: refundMethod,
       processedBy: 'Admin',
     })
+    if (!ok) return
     setRefundOpen(false)
     setReason('')
   }

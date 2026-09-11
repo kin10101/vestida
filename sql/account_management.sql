@@ -26,32 +26,44 @@
 --    The function is SECURITY DEFINER + owned by postgres (created via the
 --    SQL editor), so it may read auth.users.
 -- ------------------------------------------------------------
+-- Dropped + recreated because the language changes (sql -> plpgsql) so that the
+-- admin guard can RAISE. The grants are re-applied just below.
+DROP FUNCTION IF EXISTS public.admin_list_accounts();
 CREATE OR REPLACE FUNCTION public.admin_list_accounts()
 RETURNS json
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT json_build_object(
-    'accounts', COALESCE((
-      SELECT json_agg(x) FROM (
-        SELECT
-          au.id::text                                  AS "authId",
-          au.email                                     AS "email",
-          (au.email_confirmed_at IS NOT NULL)          AS "emailConfirmed",
-          au.created_at::text                          AS "createdAt",
-          s.id::text                                   AS "staffId",
-          COALESCE(s.name, '')                         AS "displayName",
-          COALESCE(s.role, '')                         AS "role",
-          COALESCE(s.store_id::text, '')               AS "storeId",
-          COALESCE(s.is_active, true)                  AS "isActive"
-        FROM auth.users au
-        LEFT JOIN public.staff s ON s.auth_uid = au.id
-        ORDER BY au.created_at
-      ) x
-    ), '[]'::json)
-  )
+BEGIN
+  -- SECURITY DEFINER + granted to `authenticated`, so this function MUST gate
+  -- itself. Without this line ANY signed-in staff member could call it and read
+  -- every account's email address, role and store.
+  PERFORM public.assert_admin();
+
+  RETURN (
+    SELECT json_build_object(
+      'accounts', COALESCE((
+        SELECT json_agg(x) FROM (
+          SELECT
+            au.id::text                                  AS "authId",
+            au.email                                     AS "email",
+            (au.email_confirmed_at IS NOT NULL)          AS "emailConfirmed",
+            au.created_at::text                          AS "createdAt",
+            s.id::text                                   AS "staffId",
+            COALESCE(s.name, '')                         AS "displayName",
+            COALESCE(s.role, '')                         AS "role",
+            COALESCE(s.store_id::text, '')               AS "storeId",
+            COALESCE(s.is_active, true)                  AS "isActive"
+          FROM auth.users au
+          LEFT JOIN public.staff s ON s.auth_uid = au.id
+          ORDER BY au.created_at
+        ) x
+      ), '[]'::json)
+    )
+  );
+END;
 $$;
 REVOKE ALL ON FUNCTION public.admin_list_accounts() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_list_accounts() TO authenticated;
@@ -116,6 +128,13 @@ BEGIN
     RETURNING id INTO v_staff;
   END IF;
 
+  -- Never leave the system with zero ACTIVE admins: deactivating or demoting the
+  -- last one is an unrecoverable lockout from the admin UI. (RAISE rolls the
+  -- upsert above back.)
+  IF (SELECT COUNT(*) FROM public.staff WHERE role = 'admin' AND is_active) = 0 THEN
+    RAISE EXCEPTION 'at least one active admin is required';
+  END IF;
+
   RETURN json_build_object('staff_id', v_staff::text);
 END;
 $$;
@@ -128,28 +147,42 @@ GRANT EXECUTE ON FUNCTION public.admin_configure_account(uuid, text, text, uuid,
 --    linked display name to its account's email so sign-in can proceed.
 --    SECURITY DEFINER so the (still unauthenticated) client can resolve.
 -- ------------------------------------------------------------
+-- Dropped + recreated because the language changes (sql -> plpgsql) so the
+-- ambiguous-name case can RAISE. The grants are re-applied just below.
+DROP FUNCTION IF EXISTS public.resolve_login_identifier(text);
 CREATE OR REPLACE FUNCTION public.resolve_login_identifier(p_identifier text)
 RETURNS json
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT CASE
-    -- Looks like an email → pass through (Supabase validates it).
-    WHEN p_identifier ~* '^[^@\s]+@[^@\s]+\.[^@\s]+$'
-      THEN json_build_object('email', lower(trim(p_identifier)))
-    -- Otherwise treat it as a display name → resolve to its linked email.
-    ELSE COALESCE(
-      (SELECT json_build_object('email', lower(au.email))
-       FROM public.staff s
-       JOIN auth.users au ON au.id = s.auth_uid
-       WHERE lower(trim(s.name)) = lower(trim(p_identifier))
-         AND s.is_active
-       LIMIT 1),
-      json_build_object('email', NULL)
-    )
-  END
+DECLARE
+  v_matches int;
+  v_email text;
+BEGIN
+  -- Looks like an email → pass through (Supabase validates it).
+  IF p_identifier ~* '^[^@\s]+@[^@\s]+\.[^@\s]+$' THEN
+    RETURN json_build_object('email', lower(trim(p_identifier)));
+  END IF;
+
+  -- Otherwise treat it as a display name → resolve to its linked email.
+  -- staff.name has NO uniqueness, so a duplicated display name must fail loudly:
+  -- the old `LIMIT 1` picked one arbitrarily and told the other person their
+  -- password was wrong.
+  SELECT COUNT(*), MIN(lower(au.email))
+    INTO v_matches, v_email
+  FROM public.staff s
+  JOIN auth.users au ON au.id = s.auth_uid
+  WHERE lower(trim(s.name)) = lower(trim(p_identifier))
+    AND COALESCE(s.is_active, true);
+
+  IF v_matches > 1 THEN
+    RAISE EXCEPTION 'more than one account uses that name — please sign in with your email address';
+  END IF;
+
+  RETURN json_build_object('email', v_email);
+END;
 $$;
 REVOKE ALL ON FUNCTION public.resolve_login_identifier(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.resolve_login_identifier(text) TO anon, authenticated;

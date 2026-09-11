@@ -16,6 +16,11 @@
 -- Run AFTER `schema.sql` + `supabase_functions_rls.sql` + `admin_functions.sql`
 -- in the Supabase SQL editor. Fresh installs get the columns from schema.sql;
 -- this file upgrades an existing database and swaps in the new RPCs.
+--
+-- THIS FILE IS THE SOLE OWNER of admin_get_state() and admin_upsert_product().
+-- They used to also be defined in admin_functions.sql, which meant re-running
+-- that file silently reverted the matrix-aware versions (the cause of the
+-- "SKU prefix doesn't save" bug). Do not re-add them there.
 -- ============================================================
 
 -- ------------------------------------------------------------

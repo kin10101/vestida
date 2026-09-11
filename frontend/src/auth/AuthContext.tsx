@@ -18,10 +18,30 @@ interface AuthState {
 const AuthContext = createContext<AuthState | undefined>(undefined)
 
 /** Load the signed-in user's profile via the `get_current_user()` RPC. */
-async function fetchProfile(): Promise<CurrentUser | null> {
+async function fetchProfile(): Promise<{ profile: CurrentUser | null; failed: boolean }> {
   const { data, error } = await supabase.rpc('get_current_user')
-  if (error || !data) return null
-  return data as CurrentUser
+  // A transport/DB failure is NOT the same as "no profile": only a successful
+  // call that returns nothing means the account is inactive.
+  if (error) return { profile: null, failed: true }
+  return { profile: (data as CurrentUser | null) ?? null, failed: false }
+}
+
+/**
+ * Resolve a Supabase session into an app user.
+ *
+ * `get_current_user()` only returns a profile for ACTIVE staff members, so a
+ * deactivated one (or an Auth user with no staff row) resolves to nothing.
+ * Those sessions are signed out rather than left half-authenticated — a valid
+ * token grants nothing anyway, since every RPC and every RLS policy re-checks
+ * staff.is_active server-side.
+ */
+async function resolveSession(hasSession: boolean): Promise<CurrentUser | null> {
+  if (!hasSession) return null
+  const { profile, failed } = await fetchProfile()
+  if (profile) return profile
+  // Leave the session alone if we simply couldn't reach the server.
+  if (!failed) await supabase.auth.signOut()
+  return null
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -34,26 +54,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth
       .getSession()
       .then(async ({ data }) => {
-        if (data.session) {
-          const profile = await fetchProfile()
-          if (alive) setUser(profile)
-        }
+        const profile = await resolveSession(Boolean(data.session))
+        if (alive) setUser(profile)
       })
       .finally(() => {
         if (alive) setLoading(false)
       })
 
-    const { data: sub } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (session) {
-          const profile = await fetchProfile()
-          if (alive) setUser(profile)
-        } else if (alive) {
-          setUser(null)
-        }
-        if (alive) setLoading(false)
-      },
-    )
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      // Deferred: Supabase holds an internal lock while this callback runs, so
+      // awaiting another auth call inline (the signOut in resolveSession) can
+      // deadlock. This also means a member deactivated mid-session is signed
+      // out on their next token refresh.
+      setTimeout(() => {
+        void resolveSession(Boolean(session)).then((profile) => {
+          if (!alive) return
+          setUser(profile)
+          setLoading(false)
+        })
+      }, 0)
+    })
 
     return () => {
       alive = false
@@ -75,7 +95,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       password,
     })
-    return { error: error?.message ?? null }
+    if (error) return { error: error.message }
+
+    // The password was accepted, but the app only lets in accounts that still
+    // have an ACTIVE staff profile. Deactivating a member who has a login is
+    // exactly how access is revoked, so say why instead of bouncing them back
+    // to an unexplained login screen.
+    const { profile, failed } = await fetchProfile()
+    if (!profile) {
+      await supabase.auth.signOut()
+      return {
+        error: failed
+          ? 'Could not verify your account. Please try again.'
+          : 'This account is inactive. Please ask an administrator.',
+      }
+    }
+    setUser(profile)
+    return { error: null }
   }
 
   async function signOut() {

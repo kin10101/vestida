@@ -461,3 +461,160 @@ END
 $$;
 
 -- Enforces: one row per physical unit sold. quantity > 1 is only
+-- meaningful for bulk / untracked lines that carry no physical unit, so any
+-- line with a unit_id must be quantity 1. Added NOT VALID so a re-run can
+-- never fail on pre-existing data (it still applies to every new row; run
+-- `ALTER TABLE order_line_item VALIDATE CONSTRAINT order_line_item_unit_quantity_chk`
+-- once existing data is known clean).
+DO $$
+BEGIN
+  ALTER TABLE "order_line_item" ADD CONSTRAINT order_line_item_unit_quantity_chk
+    CHECK ("unit_id" IS NULL OR "quantity" = 1) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END
+$$;
+
+-- ============================================================
+-- PERFORMANCE INDEXES
+--
+-- Each index below backs a concrete predicate/join inside one of the RPCs in
+-- supabase_functions_rls.sql / admin_functions.sql (noted per index). Plain
+-- CREATE INDEX (not CONCURRENTLY) so the file stays safe to run inside the
+-- Supabase SQL editor's transaction wrapper. Drop any you don't need.
+-- ============================================================
+
+-- get_history(): WHERE store_id = … AND order_date >= …
+CREATE INDEX IF NOT EXISTS "sales_order_store_date_idx"
+  ON "sales_order" ("store_id", "order_date" DESC, "created_at" DESC);
+
+-- get_today_summary(): kind = 'payment' AND paid_at in a day range.
+CREATE INDEX IF NOT EXISTS "payment_kind_paid_at_idx"
+  ON "payment" ("paid_at") WHERE "kind" = 'payment';
+
+-- admin_void_sale(), admin_delete_products(), product matrix reconciliation.
+CREATE INDEX IF NOT EXISTS "order_line_item_variant_idx"
+  ON "order_line_item" ("product_variant_id");
+CREATE INDEX IF NOT EXISTS "order_line_item_unit_idx"
+  ON "order_line_item" ("unit_id");
+
+-- Transfer batches: get_outgoing/incoming/received_transfers(),
+-- cancel_transfer(), plus the stock_movement RLS policies.
+CREATE INDEX IF NOT EXISTS "stock_movement_from_store_idx"
+  ON "stock_movement" ("from_store_id", "movement_type", "reference_id");
+CREATE INDEX IF NOT EXISTS "stock_movement_to_store_idx"
+  ON "stock_movement" ("to_store_id", "movement_type", "reference_id");
+
+-- receive_stock(): the latest 'transferred_out' movement for a given unit.
+CREATE INDEX IF NOT EXISTS "stock_movement_unit_type_idx"
+  ON "stock_movement" ("unit_id", "movement_type", "created_at" DESC);
+
+-- Unit picking (log_sale / transfer_stock): oldest in_stock unit of a variant
+-- at a store. Partial → small index containing exactly the rows those scan.
+CREATE INDEX IF NOT EXISTS "inventory_unit_available_idx"
+  ON "inventory_unit" ("variant_id", "current_store_id", "created_at")
+  WHERE "status" = 'in_stock';
+
+-- get_stock_summary(): the per-variant × per-store aggregate (index-only scan).
+CREATE INDEX IF NOT EXISTS "inventory_unit_variant_store_status_idx"
+  ON "inventory_unit" ("variant_id", "current_store_id", "status");
+
+-- get_staff() (WHERE store_id = …) and other FK lookups.
+CREATE INDEX IF NOT EXISTS "staff_store_idx" ON "staff" ("store_id");
+CREATE INDEX IF NOT EXISTS "product_category_idx" ON "product" ("category_id");
+
+-- ============================================================
+-- Idempotency ledger for non-order writes (used by transfer_stock()).
+--
+-- One row per client_ref holding the RPC's result JSON, so a retried call
+-- replays the ORIGINAL result instead of repeating the side effect. RLS is
+-- enabled with NO policies, so PostgREST can never read or write it; only the
+-- SECURITY DEFINER RPCs (which run as the table owner) touch it.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS "rpc_idempotency" (
+  "client_ref" varchar PRIMARY KEY,
+  "rpc" varchar NOT NULL,
+  "result" jsonb NOT NULL,
+  "created_at" timestamp NOT NULL DEFAULT (now())
+);
+
+ALTER TABLE "rpc_idempotency" ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON "rpc_idempotency" FROM anon, authenticated;
+
+-- ============================================================
+-- Order numbering + integrity constraints
+-- ============================================================
+
+-- Per-store, per-day allocator for the human-readable order reference
+-- (LGA-260910-0006). log_sale() takes a number from here inside its
+-- transaction, so two tills selling at the same instant can never be handed the
+-- same reference (previously the client derived it from a COUNT of the day's
+-- orders, which silently collided).
+CREATE TABLE IF NOT EXISTS "order_ref_counter" (
+  "store_id" uuid NOT NULL,
+  "day" date NOT NULL,
+  "next_seq" integer NOT NULL DEFAULT 0,
+  PRIMARY KEY ("store_id", "day")
+);
+
+ALTER TABLE "order_ref_counter" ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON "order_ref_counter" FROM anon, authenticated;
+
+-- The client's idempotency key (an opaque per-attempt id) is deliberately kept
+-- SEPARATE from the displayed reference, so a retry is detectable without the
+-- visible order number having to be unique per attempt. Nullable + unique =
+-- many NULLs allowed, so historical rows are unaffected.
+ALTER TABLE "sales_order" ADD COLUMN IF NOT EXISTS "idempotency_key" uuid;
+CREATE UNIQUE INDEX IF NOT EXISTS "sales_order_idempotency_key_uniq"
+  ON "sales_order" ("idempotency_key");
+
+-- One physical piece may appear on ONE order line only. Guarded: if a database
+-- already holds duplicates this warns and skips instead of failing the script.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM public.order_line_item
+    WHERE unit_id IS NOT NULL
+    GROUP BY unit_id HAVING COUNT(*) > 1
+  ) THEN
+    RAISE WARNING 'order_line_item.unit_id contains duplicates — uniqueness index NOT created';
+  ELSE
+    EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS order_line_item_unit_uniq
+               ON public.order_line_item (unit_id) WHERE unit_id IS NOT NULL';
+  END IF;
+END
+$$;
+
+-- ============================================================
+-- updated_at maintenance. A trigger keeps the column honest for EVERY write path
+-- (these RPCs, manual SQL in the editor, future code) instead of relying on each
+-- function remembering to set it.
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.updated_at := now();
+  RETURN NEW;
+END;
+$$;
+
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['store', 'staff', 'category', 'product',
+                           'product_variant', 'inventory_unit',
+                           'sales_order', 'order_line_item']
+  LOOP
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = 'public' AND table_name = t AND column_name = 'updated_at'
+    ) THEN
+      EXECUTE format('DROP TRIGGER IF EXISTS set_updated_at_trg ON public.%I', t);
+      EXECUTE format(
+        'CREATE TRIGGER set_updated_at_trg BEFORE UPDATE ON public.%I
+           FOR EACH ROW EXECUTE FUNCTION public.set_updated_at()', t);
+    END IF;
+  END LOOP;
+END
+$$;
