@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ArrowUpRight, Building2, ChevronDown, MapPin, TrendingUp, Trophy, Warehouse, X } from 'lucide-react'
+import { ArrowUpRight, Building2, ChevronDown, HeartPulse, MapPin, TrendingUp, Trophy, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAdminData } from '../AdminDataContext'
 import { EmptyState, PageHeader, StatusBadge } from '../ui'
@@ -26,6 +26,27 @@ function formatActivityTime(value: string) {
   return `${day} · ${time}`
 }
 
+// A variation is "low" once its in-stock count at a store falls to this point,
+// and stays flagged until it is restocked above it. Zero is tracked separately
+// as "out". The tile counts and the "reorder at N" line both read this one
+// constant, so the alert and its explanation can never drift apart.
+const LOW_STOCK_THRESHOLD = 2
+
+type StockSeverity = 'out' | 'low'
+
+/** One (variation · store) cell that needs attention. Health is counted per
+ *  store location rather than per variant because "low" is a location problem —
+ *  2 pieces in 6F is a restock signal even when 7F happens to hold 30. */
+interface StockHealthRow {
+  key: string
+  productName: string
+  detail: string
+  storeCode: string
+  storeName: string
+  inStock: number
+  severity: StockSeverity
+}
+
 export default function Dashboard() {
   const { state } = useAdminData()
   const navigate = useNavigate()
@@ -35,6 +56,7 @@ export default function Dashboard() {
   const [chartActive, setChartActive] = useState<ActivePoint | null>(null)
   const [chartComparisonIds, setChartComparisonIds] = useState<string[]>([])
   const [chartShowTotal, setChartShowTotal] = useState(true)
+  const [stockTab, setStockTab] = useState<StockSeverity>('out')
 
   const activeStores = useMemo(() => state.stores.filter((store) => store.isActive), [state.stores])
 
@@ -99,41 +121,72 @@ export default function Dashboard() {
     [selectedStore, state.inventoryUnits],
   )
 
-  const stockHealth = useMemo(() => {
-    const stockByVariant = new Map<string, number>()
-    inventoryScope.filter((unit) => unit.status === 'in_stock').forEach((unit) => {
-      stockByVariant.set(unit.variantId, (stockByVariant.get(unit.variantId) ?? 0) + 1)
-    })
-    // Only variants that have ever had an inventory record count here. A
-    // variation defined in the catalog but never stocked (no units at all) is a
-    // ghost variation and should not be flagged out of stock.
-    const tracked = new Set(state.inventoryUnits.map((unit) => unit.variantId))
-    const trackedActiveIds = state.productVariants
-      .filter((variant) => variant.isActive && tracked.has(variant.id))
-      .map((variant) => variant.id)
-    return {
-      outOfStock: trackedActiveIds.filter((id) => (stockByVariant.get(id) ?? 0) === 0).length,
-      lowStock: trackedActiveIds.filter((id) => {
-        const count = stockByVariant.get(id) ?? 0
-        return count > 0 && count <= 2
-      }).length,
-    }
-  }, [inventoryScope, state.inventoryUnits, state.productVariants])
+  // Stock health rows. A (variation · store) cell only qualifies once it has had
+  // inventory there — a store that never carried a variation is not "out of
+  // stock", it simply does not stock it. Ghost variations (defined in the
+  // catalog but never stocked anywhere) are excluded for the same reason.
+  const stockHealthRows = useMemo<StockHealthRow[]>(() => {
+    const productById = new Map(state.products.map((product) => [product.id, product]))
+    const variantById = new Map(state.productVariants.map((variant) => [variant.id, variant]))
+    const storeById = new Map(state.stores.map((store) => [store.id, store]))
 
-  // The 5 lowest-stock products (out of stock first, then low). Ghost
-  // variations (no inventory record ever) are excluded.
-  const lowStockProducts = useMemo(() => {
-    const tracked = new Set(state.inventoryUnits.map((unit) => unit.variantId))
-    return state.productVariants
-      .filter((variant) => variant.isActive && tracked.has(variant.id))
-      .map((variant) => ({
-        variant,
-        product: state.products.find((product) => product.id === variant.productId),
-        inStockCount: inventoryScope.filter((unit) => unit.variantId === variant.id && unit.status === 'in_stock').length,
-      }))
-      .sort((a, b) => a.inStockCount - b.inStockCount)
-      .slice(0, 5)
-  }, [inventoryScope, state.inventoryUnits, state.productVariants, state.products])
+    const cells = new Map<string, { variantId: string; storeId: string; inStock: number }>()
+    for (const unit of inventoryScope) {
+      const key = `${unit.variantId}|${unit.storeId}`
+      const cell = cells.get(key) ?? { variantId: unit.variantId, storeId: unit.storeId, inStock: 0 }
+      if (unit.status === 'in_stock') {
+        cell.inStock += 1
+      }
+      cells.set(key, cell)
+    }
+
+    const rows: StockHealthRow[] = []
+    for (const cell of cells.values()) {
+      const variant = variantById.get(cell.variantId)
+      if (!variant || !variant.isActive) {
+        continue
+      }
+      const severity: StockSeverity | null =
+        cell.inStock === 0 ? 'out' : cell.inStock <= LOW_STOCK_THRESHOLD ? 'low' : null
+      if (!severity) {
+        continue
+      }
+      const product = productById.get(variant.productId)
+      const store = storeById.get(cell.storeId)
+      rows.push({
+        key: `${cell.variantId}|${cell.storeId}`,
+        productName: product?.name ?? 'Variant',
+        detail: [variant.color, variant.size].filter(Boolean).join(' '),
+        storeCode: store?.code ?? '—',
+        storeName: store?.name ?? 'Unknown store',
+        inStock: cell.inStock,
+        severity,
+      })
+    }
+
+    // Worst first, then the thinnest counts, then a stable alphabetical order.
+    return rows.sort(
+      (a, b) =>
+        Number(b.severity === 'out') - Number(a.severity === 'out') ||
+        a.inStock - b.inStock ||
+        a.productName.localeCompare(b.productName) ||
+        a.storeCode.localeCompare(b.storeCode),
+    )
+  }, [inventoryScope, state.products, state.productVariants, state.stores])
+
+  const outOfStockRows = useMemo(() => stockHealthRows.filter((row) => row.severity === 'out'), [stockHealthRows])
+  const lowStockRows = useMemo(() => stockHealthRows.filter((row) => row.severity === 'low'), [stockHealthRows])
+
+  // The tiles ARE the tab control, so an empty tab defers to the other one —
+  // except when both are empty, where there is nothing to defer to.
+  const activeStockTab: StockSeverity =
+    (stockTab === 'out' ? outOfStockRows.length : lowStockRows.length) > 0 ||
+    outOfStockRows.length + lowStockRows.length === 0
+      ? stockTab
+      : stockTab === 'out'
+        ? 'low'
+        : 'out'
+  const visibleStockRows = activeStockTab === 'out' ? outOfStockRows : lowStockRows
 
   const topSellers = useMemo(() => {
     const orderIds = new Set(filteredOrders.map((order) => order.id))
@@ -411,20 +464,60 @@ export default function Dashboard() {
 
       <div className="dashboard-grid lower">
         <section className="admin-panel dashboard-clickable" onClick={() => navigate('/admin/inventory')}>
-          <div className="panel-header-row"><h3>Stock health</h3><div className="mini-icon-wrap"><Warehouse size={16} /></div></div>
-          <div className="stock-health-summary">
-            <div><strong>{stockHealth.outOfStock}</strong><span>Out of stock</span></div>
-            <div><strong>{stockHealth.lowStock}</strong><span>Low stock</span></div>
+          <div className="panel-header-row">
+            <h3>Stock health</h3>
+            <div className="mini-icon-wrap"><HeartPulse size={16} /></div>
           </div>
-          <div className="stack-list">
-            {lowStockProducts.length > 0 ? lowStockProducts.map((item) => <div key={item.variant.id} className="stack-item"><div><strong>{item.product?.name ?? 'Variant'}</strong><small>{item.variant.color} {item.variant.size}</small></div><StatusBadge label={`${item.inStockCount} in stock`} tone={item.inStockCount === 0 ? 'danger' : 'warning'} /></div>) : <EmptyState title="No low stock alerts" description="Inventory looks healthy for this store selection." />}
+          <div className="stock-health-summary" role="tablist" aria-label="Stock health severity">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeStockTab === 'out'}
+              className={`stock-health-tile is-out ${activeStockTab === 'out' ? 'active' : ''}`}
+              onClick={(event) => { event.stopPropagation(); setStockTab('out') }}
+            >
+              <strong>{outOfStockRows.length}</strong>
+              <span>Out of stock</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeStockTab === 'low'}
+              className={`stock-health-tile is-low ${activeStockTab === 'low' ? 'active' : ''}`}
+              onClick={(event) => { event.stopPropagation(); setStockTab('low') }}
+            >
+              <strong>{lowStockRows.length}</strong>
+              <span>Low stock</span>
+            </button>
+          </div>
+          <div className="stack-list stock-health-list" role="tabpanel">
+            {visibleStockRows.length > 0 ? visibleStockRows.map((row) => (
+              <div key={row.key} className="stack-item stock-health-row">
+                <div>
+                  <strong>{row.productName}</strong>
+                  <small className="stock-health-meta">
+                    {row.detail ? `${row.detail} · ` : ''}{row.storeCode} – {row.storeName}
+                  </small>
+                </div>
+                {row.severity === 'out'
+                  ? <StatusBadge label="0 in stock" tone="danger" />
+                  : <span className="stock-health-reorder">{row.inStock} in stock · reorder at {LOW_STOCK_THRESHOLD}</span>}
+              </div>
+            )) : (
+              <EmptyState
+                title={activeStockTab === 'out' ? 'Nothing out of stock' : 'No low stock alerts'}
+                description={activeStockTab === 'out'
+                  ? 'Every tracked variation in this scope has at least one piece on hand.'
+                  : 'Nothing is sitting at or below the reorder point.'}
+              />
+            )}
           </div>
         </section>
 
         <section className="admin-panel recent-activity-panel dashboard-clickable" onClick={() => navigate('/admin/sales?tab=transactions')}>
           <div className="panel-header-row recent-activity-head">
             <h3>Recent activity</h3>
-            <span className="recent-activity-view">View all <ArrowUpRight size={14} aria-hidden="true" /></span>
+            <span className="panel-view-all">View all <ArrowUpRight size={14} aria-hidden="true" /></span>
           </div>
           <div className="timeline-list">
             {activityEvents.length > 0 ? activityEvents.map((ev) => (
