@@ -951,9 +951,8 @@ export default function Products() {
                 return (
                   <motion.div
                     key={product.id}
-                    layout
-                    exit={{ opacity: 0, y: -6, scale: 0.98 }}
-                    transition={{ duration: 0.18, ease: 'easeOut' }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.16, ease: 'easeOut' }}
                     role={bulkMode ? 'checkbox' : 'button'}
                     tabIndex={0}
                     aria-checked={bulkMode ? isSelected : undefined}

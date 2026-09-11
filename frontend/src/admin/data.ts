@@ -74,7 +74,7 @@ export interface StockMovement {
 export interface StaffMember {
   id: string
   name: string
-  title: string
+  title?: string
   storeId: string
   isActive: boolean
   createdAt: string

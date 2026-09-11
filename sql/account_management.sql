@@ -103,6 +103,12 @@ BEGIN
     RAISE EXCEPTION 'invalid role';
   END IF;
 
+  -- A signed-in admin must not deactivate their own account (they would
+  -- lock themselves out of the admin UI on the next token refresh).
+  IF p_auth_id = auth.uid() AND p_is_active IS FALSE THEN
+    RAISE EXCEPTION 'you cannot deactivate your own account';
+  END IF;
+
   -- Admins are cross-store: they never own a single store.
   IF p_role = 'admin' THEN
     p_store_id := NULL;

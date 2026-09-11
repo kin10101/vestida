@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { KeyRound, Plus, UserRoundCog } from 'lucide-react'
 import { useAdminData } from '../AdminDataContext'
+import { useAuth } from '../../auth/AuthContext'
 import type { Account } from '../data'
 import { Drawer, EmptyState, Field, PageHeader, StatusBadge } from '../ui'
 
@@ -9,7 +10,7 @@ const tabs = ['locations', 'staff', 'accounts'] as const
 type StoreTab = (typeof tabs)[number]
 
 type StoreDraft = { id: string; code: string; name: string; isActive: boolean }
-type StaffDraft = { id: string; name: string; title: string; storeId: string; isActive: boolean }
+type StaffDraft = { id: string; name: string; storeId: string; isActive: boolean }
 type AccountDraft = {
   authId: string
   displayName: string
@@ -30,6 +31,7 @@ export default function Stores() {
     listAccounts,
     configureAccount,
   } = useAdminData()
+  const { user } = useAuth()
   const [tab, setTab] = useState<StoreTab>('locations')
   const [storeOpen, setStoreOpen] = useState(false)
   const [staffOpen, setStaffOpen] = useState(false)
@@ -38,7 +40,7 @@ export default function Stores() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [staffStoreFilter, setStaffStoreFilter] = useState('all')
   const [storeDraft, setStoreDraft] = useState<StoreDraft>({ id: '', code: '', name: '', isActive: true })
-  const [staffDraft, setStaffDraft] = useState<StaffDraft>({ id: '', name: '', title: '', storeId: '', isActive: true })
+  const [staffDraft, setStaffDraft] = useState<StaffDraft>({ id: '', name: '', storeId: '', isActive: true })
   const [accountDraft, setAccountDraft] = useState<AccountDraft>({ authId: '', displayName: '', role: 'staff', storeId: '', isActive: true })
   const [deletedStore, setDeletedStore] = useState<typeof state.stores[number] | null>(null)
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -81,7 +83,7 @@ export default function Stores() {
   }
 
   const openStaffForm = (member?: typeof state.staff[number]) => {
-    setStaffDraft(member ? { id: member.id, name: member.name, title: member.title, storeId: member.storeId, isActive: member.isActive } : { id: '', name: '', title: '', storeId: activeStores[0]?.id ?? '', isActive: true })
+    setStaffDraft(member ? { id: member.id, name: member.name, storeId: member.storeId, isActive: member.isActive } : { id: '', name: '', storeId: activeStores[0]?.id ?? '', isActive: true })
     setStaffOpen(true)
   }
 
@@ -108,7 +110,7 @@ export default function Stores() {
   }
 
   const handleSaveStaff = () => {
-    if (!staffDraft.name.trim() || !staffDraft.title.trim() || !staffDraft.storeId) return
+    if (!staffDraft.name.trim() || !staffDraft.storeId) return
     upsertStaff({ ...staffDraft, id: staffDraft.id || `staff-${Date.now()}`, createdAt: staffDraft.id ? state.staff.find((item) => item.id === staffDraft.id)?.createdAt ?? new Date().toISOString() : new Date().toISOString() })
     setStaffOpen(false)
   }
@@ -130,6 +132,7 @@ export default function Stores() {
 
   const toggleAccountActive = async (account: Account) => {
     if (!account.staffId) return
+    if (account.authId === user?.authId) return
     await configureAccount({
       authId: account.authId,
       displayName: account.displayName,
@@ -188,7 +191,7 @@ export default function Stores() {
         </div>
         <div className="record-stack compact">
           {filteredStaff.length > 0 ? filteredStaff.map((member) => <div key={member.id} className="record-card stock-row">
-            <div className="record-main"><strong>{member.name}</strong><small>{member.title} - {storeName(member.storeId)}</small></div>
+            <div className="record-main"><strong>{member.name}</strong><small>{storeName(member.storeId)}</small></div>
             <div className="record-side"><StatusBadge label={member.isActive ? 'Active' : 'Inactive'} tone={member.isActive ? 'success' : 'neutral'} /></div>
             <div className="record-actions compact-actions"><button type="button" className="text-button" onClick={() => openStaffForm(member)}>Edit</button><button type="button" className="text-button" onClick={() => toggleStaffActive(member.id)}>{member.isActive ? 'Deactivate' : 'Activate'}</button>{!member.isActive ? <button type="button" className="text-button danger-text-button" onClick={() => { if (window.confirm(`Delete ${member.name}?`)) deleteStaff(member.id) }}>Delete</button> : null}</div>
           </div>) : <EmptyState title="No staff records" description="No staff members match this store." />}
@@ -207,15 +210,16 @@ export default function Stores() {
                   ? `${account.email} · ${account.role === 'admin' ? 'Admin (all stores)' : storeName(account.storeId)}`
                   : 'Login created in Supabase Auth — not configured yet'}</small>
               </div>
-              <div className="record-side column align-end">
+              <div className="record-side align-end">
                 {configured
                   ? <StatusBadge label={account.role === 'admin' ? 'Admin' : 'Staff'} tone={account.role === 'admin' ? 'info' : 'neutral'} />
                   : <StatusBadge label="No profile" tone="warning" />}
+                {account.authId === user?.authId ? <StatusBadge label="You" tone="info" /> : null}
                 {configured ? <StatusBadge label={account.isActive ? 'Active' : 'Inactive'} tone={account.isActive ? 'success' : 'neutral'} /> : null}
               </div>
               <div className="record-actions compact-actions">
                 <button type="button" className="text-button" onClick={() => openAccountForm(account)}>{configured ? 'Edit' : 'Configure'}</button>
-                {configured ? <button type="button" className="text-button" onClick={() => toggleAccountActive(account)}>{account.isActive ? 'Deactivate' : 'Activate'}</button> : null}
+                {configured && account.authId !== user?.authId ? <button type="button" className="text-button" onClick={() => toggleAccountActive(account)}>{account.isActive ? 'Deactivate' : 'Activate'}</button> : null}
               </div>
             </div>
           }) : <EmptyState title="No login accounts" description="Create a login (email + password) in Supabase Auth, then configure its profile here." />}
@@ -233,7 +237,6 @@ export default function Stores() {
       <Drawer open={staffOpen} size="sheet" title={staffDraft.id ? 'Edit staff' : 'Add staff'} subtitle="Record the people assigned to each boutique." onClose={() => setStaffOpen(false)} footer={<div className="modal-footer-actions"><button type="button" className="secondary-button" onClick={() => setStaffOpen(false)}>Cancel</button><button type="button" className="primary-button" onClick={handleSaveStaff}>Save staff</button></div>}>
         <div className="form-stack">
           <Field label="Name"><input value={staffDraft.name} onChange={(event) => setStaffDraft((previous) => ({ ...previous, name: event.target.value }))} className="admin-input" /></Field>
-          <Field label="Role"><input value={staffDraft.title} onChange={(event) => setStaffDraft((previous) => ({ ...previous, title: event.target.value }))} className="admin-input" /></Field>
           <Field label="Assigned location"><select value={staffDraft.storeId} onChange={(event) => setStaffDraft((previous) => ({ ...previous, storeId: event.target.value }))} className="admin-select">{activeStores.map((store) => <option key={store.id} value={store.id}>{store.code}</option>)}</select></Field>
           <label className="check-row large"><input type="checkbox" checked={staffDraft.isActive} onChange={(event) => setStaffDraft((previous) => ({ ...previous, isActive: event.target.checked }))} /><span>Active staff member</span></label>
         </div>
@@ -261,7 +264,8 @@ export default function Stores() {
             ? <p className="form-note">Admins have access across all stores — no store assignment.</p>
             : <Field label="Assigned location"><select value={accountDraft.storeId} onChange={(event) => setAccountDraft((previous) => ({ ...previous, storeId: event.target.value }))} className="admin-select">{activeStores.map((store) => <option key={store.id} value={store.id}>{store.code}</option>)}</select></Field>}
 
-          <label className="check-row large"><input type="checkbox" checked={accountDraft.isActive} onChange={(event) => setAccountDraft((previous) => ({ ...previous, isActive: event.target.checked }))} /><span>Active account</span></label>
+          <label className="check-row large"><input type="checkbox" checked={accountDraft.isActive} disabled={accountEditing && accountDraft.authId === user?.authId} onChange={(event) => setAccountDraft((previous) => ({ ...previous, isActive: event.target.checked }))} /><span>Active account</span></label>
+          {accountEditing && accountDraft.authId === user?.authId ? <p className="form-note">You cannot deactivate your own account.</p> : null}
         </div>
       </Drawer>
 

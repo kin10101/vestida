@@ -4174,6 +4174,8 @@
 }
 
 .readonly-field {
+  display: flex;
+  align-items: center;
   color: var(--ink-soft);
   background: var(--taupe-tint);
   cursor: default;

@@ -3,5 +3,6 @@ export type Role = 'staff' | 'admin'
 export interface CurrentUser {
   name: string
   role: Role
+  authId?: string
   storeCode: string
 }

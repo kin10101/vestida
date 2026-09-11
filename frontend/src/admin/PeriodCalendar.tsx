@@ -154,7 +154,7 @@ export default function PeriodCalendar({ value, onChange, onClose }: Props) {
           })}
         </div>
         <p className="cal-foot-hint">
-          {unit === 'day' ? 'Pick a day to show its sales.' : 'Pick any day — its Monday–Sunday week is shown.'}
+          {unit === 'day' ? 'Pick a day to show its sales.' : 'Monday–Sunday week is shown.'}
         </p>
       </div>
     )

@@ -338,6 +338,12 @@ BEGIN
   IF p_name IS NULL OR trim(p_name) = '' THEN
     RAISE EXCEPTION 'name required';
   END IF;
+  -- A signed-in admin must not deactivate their own staff row.
+  IF p_is_active IS FALSE AND EXISTS (
+    SELECT 1 FROM public.staff WHERE id = p_id AND auth_uid = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'you cannot deactivate your own account';
+  END IF;
   INSERT INTO public.staff (id, name, store_id, is_active)
   VALUES (COALESCE(p_id, gen_random_uuid()), trim(p_name), p_store_id, p_is_active)
   ON CONFLICT (id) DO UPDATE SET
@@ -361,6 +367,12 @@ BEGIN
   PERFORM public.assert_admin();
   IF p_ids IS NULL OR array_length(p_ids, 1) IS NULL THEN
     RAISE EXCEPTION 'no staff selected';
+  END IF;
+  -- A signed-in admin must not deactivate their own staff row.
+  IF p_is_active IS FALSE AND EXISTS (
+    SELECT 1 FROM public.staff WHERE id = ANY(p_ids) AND auth_uid = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'you cannot deactivate your own account';
   END IF;
   UPDATE public.staff SET is_active = p_is_active, updated_at = now()
   WHERE id = ANY(p_ids);

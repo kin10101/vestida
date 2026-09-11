@@ -392,7 +392,7 @@ export default function Dashboard() {
           <div className="store-perf-list">
             {storeSales.length > 0 ? storeSales.map((item) => (
               <div key={item.store.id} className="store-perf-row">
-                <span className="store-perf-name">{item.store.name}</span>
+                <span className="store-perf-name">{item.store.code} - {item.store.name}</span>
                 <div className="store-perf-track">
                   <div className="store-perf-fill" style={{ width: `${storeSales[0].revenue > 0 ? (item.revenue / storeSales[0].revenue) * 100 : 0}%` }} />
                 </div>

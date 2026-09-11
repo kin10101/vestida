@@ -40,6 +40,7 @@ AS $$
   SELECT json_build_object(
     'name',      s.name,
     'role',      s.role,
+    'authId',    s.auth_uid::text,
     'storeCode', st.code
   )
   FROM public.staff s
