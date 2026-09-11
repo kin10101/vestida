@@ -986,6 +986,7 @@ export default function Sales() {
                 <span role="columnheader">Item</span>
                 <span role="columnheader">Date / time</span>
                 <span role="columnheader">Store</span>
+                <span role="columnheader">Dispatched by</span>
                 <span role="columnheader">Fulfillment</span>
                 <span role="columnheader" className="num">Total</span>
               </div>
@@ -1005,6 +1006,7 @@ export default function Sales() {
                     <span className="tx-item" role="cell"><strong>{txItemByOrder.get(s.order.id) || 'No item details'}</strong><small>{formatCount(s.money.itemCount)} item{s.money.itemCount === 1 ? '' : 's'}</small></span>
                     <span className="tx-time" role="cell">{formatDateTime(s.order.createdAt)}</span>
                     <span className="tx-store" role="cell">{s.storeName}</span>
+                    <span className="tx-dispatched" role="cell">{s.order.dispatchedBy || '—'}</span>
                     <span role="cell"><StatusBadge label={s.fulfill.label} tone={s.fulfill.tone} /></span>
                     <span className="num tx-total" role="cell">{formatPeso(s.money.total)}</span>
                   </div>

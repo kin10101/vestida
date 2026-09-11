@@ -132,6 +132,7 @@ export interface OrderRecord {
   status: OrderStatus
   reference: string
   notes: string
+  dispatchedBy: string
   createdAt: string
   updatedAt: string
 }

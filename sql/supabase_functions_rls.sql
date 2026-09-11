@@ -616,7 +616,7 @@ $$;
 REVOKE ALL ON FUNCTION public.get_stores() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_stores() TO authenticated;
 
--- Active staff at this store (names, for "Care of" + History filter).
+-- Active staff at this store for "Care of" selection and history filters.
 CREATE OR REPLACE FUNCTION public.get_staff()
 RETURNS json
 LANGUAGE sql
@@ -624,9 +624,9 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT COALESCE(json_agg(name ORDER BY name), '[]'::json)
+  SELECT COALESCE(json_agg(s ORDER BY s.name), '[]'::json)
   FROM (
-    SELECT s.name FROM public.staff s
+    SELECT s.id, s.name FROM public.staff s
     WHERE s.is_active AND s.store_id = public.get_my_store_id()
   ) s
 $$;

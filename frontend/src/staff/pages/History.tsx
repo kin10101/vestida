@@ -75,12 +75,12 @@ export default function History() {
     let alive = true
     Promise.all([
       apiRpc<HistoryOrder[]>('get_history', {}),
-      apiRpc<string[]>('get_staff', {}),
+      apiRpc<Array<{ id: string; name: string }>>('get_staff', {}),
     ])
       .then(([history, staffList]) => {
         if (!alive) return
         setOrders(history)
-        setStaffFilters(['All', ...staffList])
+        setStaffFilters(['All', ...staffList.map((member) => member.name)])
       })
       .catch(() => {
         /* empty states */

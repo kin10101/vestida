@@ -34,6 +34,11 @@ interface CatalogProduct {
   variants: CatalogVariant[]
 }
 
+interface StaffOption {
+  id: string
+  name: string
+}
+
 const ALL = 'all'
 
 const PAYMENT_METHODS: { id: PaymentMethod; label: string; icon: typeof Banknote }[] = [
@@ -104,9 +109,9 @@ export default function Sale() {
   // Catalog, categories and staff loaded from the API.
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
   const [products, setProducts] = useState<CatalogProduct[]>([])
-  const [staff, setStaff] = useState<string[]>([])
+  const [staff, setStaff] = useState<StaffOption[]>([])
 
-  const [careOf, setCareOf] = useState(staff[0])
+  const [careOf, setCareOf] = useState('')
   const [orderNo, setOrderNo] = useState('')
 
   useEffect(() => {
@@ -114,13 +119,14 @@ export default function Sale() {
     Promise.all([
       apiRpc<{ id: string; name: string }[]>('get_categories', {}),
       apiRpc<CatalogProduct[]>('get_catalog', {}),
-      apiRpc<string[]>('get_staff', {}),
+      apiRpc<StaffOption[]>('get_staff', {}),
     ])
       .then(([cats, prods, staffList]) => {
         if (!alive) return
         setCategories(cats)
         setProducts(prods)
         setStaff(staffList)
+        setCareOf((current) => current || staffList[0]?.id || '')
       })
       .catch(() => {
         /* leave empty; pages render empty states */
@@ -294,7 +300,7 @@ export default function Sale() {
           spec_note: i.spec ?? null,
         })),
         p_payment: paid > 0 ? { method, amount: paid, note: note.trim() || null } : null,
-        p_care_of: null, // staff-uuid mapping not wired yet; dispatched_by is informational
+        p_care_of: careOf || null,
         p_idempotency_key: attemptRef.current.attemptKey,
       })
       orderNumber = result?.order_number ?? attemptRef.current.attemptKey
@@ -330,7 +336,7 @@ export default function Sale() {
     setMethod('cash')
     setAmount('')
     setNote('')
-    setCareOf(staff[0])
+    setCareOf(staff[0]?.id ?? '')
     setOrderNo('')
   }
 
@@ -517,7 +523,10 @@ export default function Sale() {
                             className="price-input"
                             inputMode="decimal"
                             value={agreedPrice}
-                            onChange={(e) => setAgreedPrice(e.target.value)}
+                            onChange={(e) => setAgreedPrice(e.target.value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1'))}
+                            type="number"
+                            min="0"
+                            step="0.01"
                             placeholder="Agreed price per unit"
                           />
                         </div>
@@ -568,7 +577,10 @@ export default function Sale() {
             className="price-input"
             inputMode="decimal"
             value={mtoPrice}
-            onChange={(e) => setMtoPrice(e.target.value)}
+            onChange={(e) => setMtoPrice(e.target.value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1'))}
+            type="number"
+            min="0"
+            step="0.01"
             placeholder="Agreed price per unit"
           />
         </div>
@@ -623,8 +635,11 @@ export default function Sale() {
           id="sale-amount"
           className="price-input"
           inputMode="decimal"
+          type="number"
+          min="0"
+          step="0.01"
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+          onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1'))}
           placeholder="Enter payment amount"
         />
         <button type="button" className="amount-fill-btn" onClick={() => setAmount(String(total))}>
@@ -656,13 +671,13 @@ export default function Sale() {
         {staff.map((s) => (
           <motion.button
             type="button"
-            key={s}
-            className={`option-chip${careOf === s ? ' active' : ''}`}
-            aria-pressed={careOf === s}
-            onClick={() => setCareOf(s)}
+            key={s.id}
+            className={`option-chip${careOf === s.id ? ' active' : ''}`}
+            aria-pressed={careOf === s.id}
+            onClick={() => setCareOf(s.id)}
             whileTap={{ scale: 0.94 }}
           >
-            {s}
+            {s.name}
           </motion.button>
         ))}
       </div>
@@ -719,7 +734,7 @@ export default function Sale() {
         )}
         <div className="summary-row">
           <span>Care of</span>
-          <span>{careOf}</span>
+          <span>{staff.find((member) => member.id === careOf)?.name ?? 'Not assigned'}</span>
         </div>
       </div>
 

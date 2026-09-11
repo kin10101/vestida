@@ -118,12 +118,14 @@ BEGIN
         FROM public.staff) x), '[]'::json),
       'storeAccess', '[]'::json,
       'orders', COALESCE((SELECT json_agg(x) FROM (
-        SELECT id, store_id AS "storeId", customer_name AS "customerName",
-               order_type AS "orderType", status,
-               COALESCE(client_ref, id::text) AS "reference",
-               COALESCE(notes,'') AS "notes",
-               created_at::text AS "createdAt", updated_at::text AS "updatedAt"
-        FROM public.sales_order) x), '[]'::json),
+        SELECT o.id, o.store_id AS "storeId", o.customer_name AS "customerName",
+               o.order_type AS "orderType", o.status,
+               COALESCE(o.client_ref, o.id::text) AS "reference",
+               COALESCE(o.notes,'') AS "notes",
+               o.created_at::text AS "createdAt", o.updated_at::text AS "updatedAt",
+               COALESCE(s.name, '') AS "dispatchedBy"
+        FROM public.sales_order o
+        LEFT JOIN public.staff s ON s.id = o.dispatched_by) x), '[]'::json),
       'orderLines', COALESCE((SELECT json_agg(x) FROM (
         SELECT id, order_id AS "orderId", product_variant_id AS "variantId",
                COALESCE(spec_note,'') AS "description", quantity,
