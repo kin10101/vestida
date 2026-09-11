@@ -3443,6 +3443,19 @@
     flex: 1 1 auto;
   }
 
+  .segment-wrap {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: visible;
+    width: 100%;
+  }
+
+  .segment-wrap .segmented-tab {
+    min-width: 0;
+    width: 100%;
+    padding-inline: 8px;
+  }
+
   .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .metric-card { min-height: 118px; padding: 14px; }
   .metric-card strong { font-size: 25px; }
