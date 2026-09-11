@@ -31,6 +31,13 @@ happened (re-running `admin_functions.sql` restored the pre-matrix RPCs).
   `get_*` reads / RLS policies — **only** `supabase_functions_rls.sql`
 - every other `admin_*` RPC — **only** `admin_functions.sql`
 
+**Why both `cancel_transfer`/`receive_stock` AND
+`admin_cancel_transfer`/`admin_receive_transfer`:** the staff pair is scoped to
+`get_my_store_id()`, and an admin's `staff.store_id` is NULL by design (admins
+are cross-store), so an admin can never call them. The `admin_*` pair is
+`assert_admin()`-gated and works on any batch — that is what the Inventory
+page's in-transit card uses.
+
 If you add a file that redefines an existing RPC, either fold it into the owning
 file or say so loudly in both headers.
 
@@ -44,8 +51,10 @@ file or say so loudly in both headers.
   read models, and every RLS policy.
 - `admin_functions.sql` — `assert_admin()` + the admin write API, including the
   shared product-removal worker `admin_delete_product_rows()` (also used by
-  `admin_delete_category(force => true)`).
-- `product_matrix.sql` — the product×variant matrix, `admin_get_state()`,
+  `admin_delete_category(force => true)`) and the in-transit finishers
+  `admin_cancel_transfer()` / `admin_receive_transfer()`.
+- `product_matrix.sql` — the product×variant matrix, `admin_get_state()`
+  (`stockMovements[]` carries `referenceId` = the transfer batch),
   `admin_upsert_product()`.
 - `account_management.sql` — `admin_list_accounts()`, `admin_configure_account()`,
   `resolve_login_identifier()`.

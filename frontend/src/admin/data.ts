@@ -68,6 +68,9 @@ export interface StockMovement {
   staffName: string
   note: string
   reference: string
+  // 'transfer' movements share one reference_id per batch (there is no transfer
+  // table), which is how in-transit transfers are grouped and finished.
+  referenceId?: string | null
   createdAt: string
 }
 

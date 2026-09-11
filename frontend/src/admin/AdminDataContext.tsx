@@ -48,6 +48,11 @@ export interface AdminDataContextValue {
   adjustInventoryUnit: (unitId: string, nextStatus: UnitStatus, note: string, staffName: string) => Promise<void>
   bulkAdjustInventoryUnits: (unitIds: string[], nextStatus: UnitStatus, note: string, staffName: string) => Promise<void>
   transferStock: (input: { fromStoreId: string; toStoreId: string; items: Array<{ variantId: string; quantity: number }>; note: string }) => Promise<void>
+  // Finish an in-transit STAFF transfer. Admins are cross-store (staff.store_id
+  // is NULL), so the store-scoped staff RPCs cannot be used here — these call
+  // the admin-gated equivalents. Both report success so the caller can toast.
+  cancelTransfer: (transferId: string) => Promise<boolean>
+  receiveTransfer: (transferId: string) => Promise<boolean>
   // Voiding/refunding can be REJECTED by the server (already voided, refund
   // exceeds what was paid, order not found), so both report success and the
   // caller keeps its dialog open on failure.
@@ -333,6 +338,12 @@ export function AdminDataProvider({ children }: { children: ReactNode }) {
         p_items: items.map((item) => ({ variant_id: item.variantId, quantity: item.quantity })),
         p_note: note || null,
       }))
+    },
+    cancelTransfer: async (transferId) => {
+      return persist(() => apiRpc('admin_cancel_transfer', { p_transfer_id: transferId }))
+    },
+    receiveTransfer: async (transferId) => {
+      return persist(() => apiRpc('admin_receive_transfer', { p_transfer_id: transferId }))
     },
     voidSale: async (draft) => {
       return persist(() => apiRpc('admin_void_sale', { p_order_id: draft.orderId, p_reason: draft.reason }))

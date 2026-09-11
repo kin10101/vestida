@@ -118,6 +118,7 @@ BEGIN
                m.from_store_id AS "fromStoreId", m.to_store_id AS "toStoreId",
                COALESCE(s.name,'') AS "staffName", COALESCE(m.note,'') AS "note",
                COALESCE(m.reference_type,'') AS "reference",
+               m.reference_id::text AS "referenceId",
                m.created_at::text AS "createdAt"
         FROM public.stock_movement m
         LEFT JOIN public.staff s ON s.id = m.performed_by) x), '[]'::json),

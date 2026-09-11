@@ -566,6 +566,138 @@ REVOKE ALL ON FUNCTION public.admin_transfer_stock(uuid, uuid, jsonb, text) FROM
 GRANT EXECUTE ON FUNCTION public.admin_transfer_stock(uuid, uuid, jsonb, text) TO authenticated;
 
 -- ============================================================
+-- Finish an in-transit STAFF transfer from the admin side.
+--
+-- A staff transfer (transfer_stock) parks the units in `in_transit`
+-- at the destination until that store receives them; one reference_id
+-- groups the batch (there is no transfer table). The staff RPCs
+-- (cancel_transfer / receive_stock) are scoped to the CALLER's own
+-- staff.store_id, so an admin (store_id NULL, cross-store role) can
+-- never call them. These two are assert_admin()-gated and work on ANY
+-- batch, which is what the Inventory page's in-transit card uses.
+-- ============================================================
+
+-- Reverse an in-transit batch: units go back to in_stock at the
+-- store that sent them (logged as an 'adjustment', like the staff flow).
+CREATE OR REPLACE FUNCTION public.admin_cancel_transfer(p_transfer_id uuid)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_staff uuid;
+  v_from_store uuid;
+  v_units uuid[];
+  v_count int;
+BEGIN
+  PERFORM public.assert_admin();
+  SELECT id INTO v_staff FROM public.staff WHERE auth_uid = auth.uid();
+
+  SELECT m.from_store_id INTO v_from_store
+  FROM public.stock_movement m
+  WHERE m.reference_id = p_transfer_id
+    AND m.movement_type = 'transferred_out'
+  LIMIT 1;
+
+  IF v_from_store IS NULL THEN
+    RAISE EXCEPTION 'transfer not found';
+  END IF;
+
+  -- Lock the in-transit UNITS (not just the ledger rows) so a concurrent
+  -- receive cannot win the race and leave us adjusting a delivered unit.
+  SELECT array_agg(t.id), COUNT(*) INTO v_units, v_count
+  FROM (
+    SELECT u.id
+    FROM public.inventory_unit u
+    WHERE u.status = 'in_transit'
+      AND u.id IN (
+        SELECT m.unit_id FROM public.stock_movement m
+        WHERE m.reference_id = p_transfer_id AND m.movement_type = 'transferred_out'
+      )
+    FOR UPDATE SKIP LOCKED
+  ) t;
+
+  IF COALESCE(v_count, 0) = 0 THEN
+    RAISE EXCEPTION 'this transfer is no longer in transit';
+  END IF;
+
+  UPDATE public.inventory_unit
+    SET status = 'in_stock', current_store_id = v_from_store, updated_at = now()
+  WHERE id = ANY(v_units);
+
+  INSERT INTO public.stock_movement
+    (unit_id, movement_type, from_store_id, reference_type, reference_id, performed_by, note)
+  SELECT u.id, 'adjustment', v_from_store, 'transfer', p_transfer_id, v_staff, 'cancelled transfer'
+  FROM unnest(v_units) AS u(id);
+
+  RETURN json_build_object('cancelled', true, 'units', v_count);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_cancel_transfer(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.admin_cancel_transfer(uuid) TO authenticated;
+
+-- Confirm receipt at the DESTINATION store: the units are already parked
+-- there (transfer_stock sets current_store_id when it parks them), so this
+-- only flips the status and logs the transferred_in side of the pair.
+CREATE OR REPLACE FUNCTION public.admin_receive_transfer(p_transfer_id uuid)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_staff uuid;
+  v_from_store uuid;
+  v_units uuid[];
+  v_count int;
+BEGIN
+  PERFORM public.assert_admin();
+  SELECT id INTO v_staff FROM public.staff WHERE auth_uid = auth.uid();
+
+  SELECT m.from_store_id INTO v_from_store
+  FROM public.stock_movement m
+  WHERE m.reference_id = p_transfer_id
+    AND m.movement_type = 'transferred_out'
+  LIMIT 1;
+
+  IF v_from_store IS NULL THEN
+    RAISE EXCEPTION 'transfer not found';
+  END IF;
+
+  SELECT array_agg(t.id), COUNT(*) INTO v_units, v_count
+  FROM (
+    SELECT u.id
+    FROM public.inventory_unit u
+    WHERE u.status = 'in_transit'
+      AND u.id IN (
+        SELECT m.unit_id FROM public.stock_movement m
+        WHERE m.reference_id = p_transfer_id AND m.movement_type = 'transferred_out'
+      )
+    FOR UPDATE SKIP LOCKED
+  ) t;
+
+  IF COALESCE(v_count, 0) = 0 THEN
+    RAISE EXCEPTION 'this transfer is no longer in transit';
+  END IF;
+
+  UPDATE public.inventory_unit
+    SET status = 'in_stock', updated_at = now()
+  WHERE id = ANY(v_units);
+
+  INSERT INTO public.stock_movement
+    (unit_id, movement_type, from_store_id, to_store_id, reference_type, reference_id, performed_by, note)
+  SELECT u.id, 'transferred_in', v_from_store, u.current_store_id, 'transfer', p_transfer_id, v_staff, NULL
+  FROM public.inventory_unit u
+  WHERE u.id = ANY(v_units);
+
+  RETURN json_build_object('received', true, 'units', v_count);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.admin_receive_transfer(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.admin_receive_transfer(uuid) TO authenticated;
+
+-- ============================================================
 -- Order: create or update an order + its line items.
 -- draft json: { id?, storeId, customerName, orderType, status,
 --   reference, notes, items: [{variantId?, description, quantity,

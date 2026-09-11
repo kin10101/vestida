@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { MouseEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion, MotionConfig, useReducedMotion } from 'framer-motion'
-import { ArrowRightLeft, ChevronDown, History, MoreHorizontal, Plus, SlidersHorizontal } from 'lucide-react'
+import { ArrowRightLeft, ChevronDown, History, MoreHorizontal, PackageCheck, Plus, SlidersHorizontal, XCircle } from 'lucide-react'
 import { useAdminData } from '../AdminDataContext'
-import type { InventoryUnit, Product, ProductVariant, UnitStatus } from '../data'
+import type { InventoryUnit, Product, ProductVariant, StockMovement, UnitStatus } from '../data'
 import { Drawer, EmptyState, Field, PageHeader, StatusBadge, Toast } from '../ui'
 import ExportMenu from '../ExportMenu'
 import type { ExportRow } from '../ExportMenu'
@@ -28,6 +28,32 @@ interface ProductGroup {
   outCount: number
   storeCount: number
 }
+
+interface InTransitLine {
+  key: string
+  label: string
+  sku: string
+  qty: number
+}
+
+// A staff transfer parks units in `in_transit` until the destination store
+// receives them. There is no transfer table — the stock_movement rows of one
+// batch share a reference_id, which is the batch id used to finish it.
+interface InTransitBatch {
+  id: string
+  fromStoreId: string
+  toStoreId: string
+  createdAt: string
+  staffName: string
+  note: string
+  pieces: number
+  lines: InTransitLine[]
+}
+
+// The ••• popover is shared by variant rows and in-transit transfer rows.
+type KebabMenu =
+  | { target: 'variant'; variantId: string; x: number; y: number }
+  | { target: 'transfer'; transferId: string; x: number; y: number }
 
 const KIND_LABELS: Record<string, string> = {
   received: 'Received',
@@ -53,12 +79,12 @@ const fmtDateTime = (value: string) => {
 
 export default function Inventory() {
   const navigate = useNavigate()
-  const { state, adjustInventoryUnit, transferStock } = useAdminData()
+  const { state, adjustInventoryUnit, transferStock, cancelTransfer, receiveTransfer } = useAdminData()
   const [storeFilter, setStoreFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState<StockScope>('all')
   const [search, setSearch] = useState('')
   const [expandedIds, setExpandedIds] = useState<string[]>([])
-  const [menu, setMenu] = useState<{ variantId: string; x: number; y: number } | null>(null)
+  const [menu, setMenu] = useState<KebabMenu | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
   const reduceMotion = useReducedMotion()
 
@@ -198,6 +224,67 @@ export default function Inventory() {
     return out
   }, [filteredRows, state.products, categoryById])
 
+  // Batches (one reference_id each) that still have units in transit. Staff
+  // transfers park stock in `in_transit` until the destination store receives
+  // it, so these are the only rows the admin can still cancel or confirm.
+  // Only the store filter applies here — search/status are inventory-specific.
+  const inTransitBatches = useMemo<InTransitBatch[]>(() => {
+    const unitById = new Map<string, InventoryUnit>(state.inventoryUnits.map((unit) => [unit.id, unit]))
+    const accum = new Map<string, { movement: StockMovement; units: InventoryUnit[] }>()
+
+    for (const movement of state.stockMovements) {
+      if (movement.kind !== 'transferred_out' || !movement.referenceId) {
+        continue
+      }
+      const unit = unitById.get(movement.unitId)
+      if (!unit || unit.status !== 'in_transit') {
+        continue
+      }
+      // In transit, a unit already sits at the DESTINATION store.
+      if (!allStores && unit.storeId !== storeFilter && movement.fromStoreId !== storeFilter) {
+        continue
+      }
+      let batch = accum.get(movement.referenceId)
+      if (!batch) {
+        batch = { movement, units: [] }
+        accum.set(movement.referenceId, batch)
+      }
+      batch.units.push(unit)
+    }
+
+    const out: InTransitBatch[] = []
+    for (const [id, batch] of accum) {
+      const counts = new Map<string, number>()
+      for (const unit of batch.units) {
+        counts.set(unit.variantId, (counts.get(unit.variantId) ?? 0) + 1)
+      }
+      const lines: InTransitLine[] = [...counts.entries()].map(([variantId, qty]) => {
+        const variant = variantById.get(variantId)
+        const product = variant ? productById.get(variant.productId) : undefined
+        const detail = variant ? [variant.color, variant.size].filter(Boolean).join(' ') : ''
+        return {
+          key: variantId,
+          label: `${product?.name ?? 'Unknown product'}${detail ? ` · ${detail}` : ''}`,
+          sku: variant?.sku || '—',
+          qty,
+        }
+      })
+      out.push({
+        id,
+        fromStoreId: batch.movement.fromStoreId ?? '',
+        toStoreId: batch.movement.toStoreId ?? '',
+        createdAt: batch.movement.createdAt,
+        staffName: batch.movement.staffName,
+        note: batch.movement.note,
+        pieces: batch.units.length,
+        lines,
+      })
+    }
+    return out.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  }, [state.stockMovements, state.inventoryUnits, variantById, productById, allStores, storeFilter])
+
+  const inTransitPieces = inTransitBatches.reduce((sum, batch) => sum + batch.pieces, 0)
+
   const isExpanded = (productId: string) => searchActive || expandedIds.includes(productId)
 
   const toggleProduct = (productId: string) => {
@@ -209,7 +296,12 @@ export default function Inventory() {
 
   const openMenu = (event: MouseEvent<HTMLButtonElement>, variantId: string) => {
     const rect = event.currentTarget.getBoundingClientRect()
-    setMenu({ variantId, x: rect.right, y: rect.bottom })
+    setMenu({ target: 'variant', variantId, x: rect.right, y: rect.bottom })
+  }
+
+  const openTransferMenu = (event: MouseEvent<HTMLButtonElement>, transferId: string) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    setMenu({ target: 'transfer', transferId, x: rect.right, y: rect.bottom })
   }
 
   const menuLeft = menu ? Math.max(8, Math.min(menu.x, window.innerWidth - 196)) : 0
@@ -241,6 +333,23 @@ export default function Inventory() {
   const openHistory = (variantId: string) => {
     setMenu(null)
     setHistoryVariantId(variantId)
+  }
+
+  // --- Finishing an in-transit staff transfer -------------------------------
+  const runCancelTransfer = async (transferId: string) => {
+    setMenu(null)
+    const ok = await cancelTransfer(transferId)
+    if (ok) {
+      setToast('Transfer cancelled — stock returned to the sending store')
+    }
+  }
+
+  const runReceiveTransfer = async (transferId: string) => {
+    setMenu(null)
+    const ok = await receiveTransfer(transferId)
+    if (ok) {
+      setToast('Transfer received at the destination store')
+    }
   }
 
   // --- Single-unit adjust (hidden behind the variant ••• menu) -------------
@@ -396,6 +505,62 @@ export default function Inventory() {
         </button>
       </div>
 
+      {/* In-transit transfers (staff transfers awaiting a destination receive). */}
+      {inTransitBatches.length > 0 ? (
+        <section className="admin-panel inventory-overview in-transit-panel" aria-label="Transfers in transit">
+          <div className="inventory-card-head">
+            <div className="inventory-note">
+              <span className="inventory-stat">
+                <strong>{inTransitBatches.length}</strong>
+                <span>in transit</span>
+              </span>
+              <span className="inventory-stat">
+                <strong>{inTransitPieces}</strong>
+                <span>piece{inTransitPieces === 1 ? '' : 's'} on the way</span>
+              </span>
+            </div>
+          </div>
+
+          <div className="inventory-accordion">
+            {inTransitBatches.map((batch) => (
+              <div key={batch.id} className="in-transit-batch">
+                <div className="in-transit-head">
+                  <strong className="in-transit-route">
+                    {storeCode(batch.fromStoreId)} → {storeCode(batch.toStoreId)}
+                  </strong>
+                  <small className="in-transit-meta">
+                    Sent {fmtDateTime(batch.createdAt)}
+                    {batch.staffName ? ` · ${batch.staffName}` : ''}
+                    {batch.note ? ` · ${batch.note}` : ''}
+                  </small>
+                </div>
+                <div className="in-transit-actions">
+                  <StatusBadge label="In transit" tone="info" />
+                  <button
+                    type="button"
+                    className="icon-button plain inv-kebab"
+                    onClick={(event) => openTransferMenu(event, batch.id)}
+                    aria-label={`Actions for the transfer from ${storeCode(batch.fromStoreId)} to ${storeCode(batch.toStoreId)}`}
+                    aria-haspopup="menu"
+                  >
+                    <MoreHorizontal size={18} />
+                  </button>
+                </div>
+                <div className="in-transit-items">
+                  {batch.lines.map((line) => (
+                    <span key={line.key} className="in-transit-item" title={line.label}>
+                      <span className="inv-sku">{line.sku}</span>
+                      <span className="in-transit-item-label">{line.label}</span>
+                      <b>× {line.qty}</b>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <section className="admin-panel inventory-overview" aria-label="Catalog stock by product">
         <div className="inventory-card-head">
           <div className="inventory-note">
@@ -546,19 +711,48 @@ export default function Inventory() {
       {menu ? (
         <>
           <div className="kebab-backdrop" onClick={closeMenu} aria-hidden="true" />
-          <div className="kebab-menu" style={{ left: menuLeft, top: menuTop }} role="menu" aria-label="Variant actions">
-            <button type="button" role="menuitem" onClick={() => openAdjust(menu.variantId)}>
-              <SlidersHorizontal size={16} />
-              Adjust stock
-            </button>
-            <button type="button" role="menuitem" onClick={() => openTransfer(menu.variantId)}>
-              <ArrowRightLeft size={16} />
-              Transfer
-            </button>
-            <button type="button" role="menuitem" onClick={() => openHistory(menu.variantId)}>
-              <History size={16} />
-              Movement history
-            </button>
+          <div
+            className="kebab-menu"
+            style={{ left: menuLeft, top: menuTop }}
+            role="menu"
+            aria-label={menu.target === 'variant' ? 'Variant actions' : 'Transfer actions'}
+          >
+            {menu.target === 'variant' ? (
+              <>
+                <button type="button" role="menuitem" onClick={() => openAdjust(menu.variantId)}>
+                  <SlidersHorizontal size={16} />
+                  Adjust stock
+                </button>
+                <button type="button" role="menuitem" onClick={() => openTransfer(menu.variantId)}>
+                  <ArrowRightLeft size={16} />
+                  Transfer
+                </button>
+                <button type="button" role="menuitem" onClick={() => openHistory(menu.variantId)}>
+                  <History size={16} />
+                  Movement history
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="danger"
+                  onClick={() => { void runCancelTransfer(menu.transferId) }}
+                >
+                  <XCircle size={16} />
+                  Cancel transfer
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => { void runReceiveTransfer(menu.transferId) }}
+                >
+                  <PackageCheck size={16} />
+                  Confirm transfer
+                </button>
+              </>
+            )}
           </div>
         </>
       ) : null}
