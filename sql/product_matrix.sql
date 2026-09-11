@@ -24,6 +24,13 @@
 -- ============================================================
 
 -- ------------------------------------------------------------
+-- 0) Store soft-delete column (added here too so admin_get_state()
+--    below can reference it regardless of migration order).
+-- ------------------------------------------------------------
+ALTER TABLE public.store
+  ADD COLUMN IF NOT EXISTS is_deleted boolean DEFAULT false;
+
+-- ------------------------------------------------------------
 -- 1) Add product-level matrix columns (no-op if already present).
 -- ------------------------------------------------------------
 ALTER TABLE public.product
@@ -76,7 +83,9 @@ BEGIN
   RETURN (
     SELECT json_build_object(
       'stores', COALESCE((SELECT json_agg(x) FROM (
-        SELECT id, code, name, is_active AS "isActive", created_at::text AS "createdAt"
+        SELECT id, code, name, is_active AS "isActive",
+               COALESCE(is_deleted,false) AS "isDeleted",
+               created_at::text AS "createdAt"
         FROM public.store) x), '[]'::json),
       'categories', COALESCE((SELECT json_agg(x) FROM (
         SELECT id, name, created_at::text AS "createdAt"

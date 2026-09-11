@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS "store" (
   "name" varchar NOT NULL,
   "code" varchar UNIQUE NOT NULL,
   "is_active" boolean DEFAULT true,
+  "is_deleted" boolean DEFAULT false,
   "created_at" timestamp DEFAULT (now()),
   "updated_at" timestamp DEFAULT (now())
 );

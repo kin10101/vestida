@@ -16,6 +16,15 @@
 --   • storeAccess (username/password/devices) has NO table → []
 -- ============================================================
 
+-- ------------------------------------------------------------
+-- Soft-delete support: deleting a store marks is_deleted = true
+-- instead of hard-deleting the row (sales_order.store_id keeps
+-- history). admin_get_state() (in product_matrix.sql) exposes it
+-- as "isDeleted" so the admin UI hides deleted locations.
+-- ------------------------------------------------------------
+ALTER TABLE public.store
+  ADD COLUMN IF NOT EXISTS is_deleted boolean DEFAULT false;
+
 -- Guard: only admins may call admin functions.
 CREATE OR REPLACE FUNCTION public.assert_admin()
 RETURNS void
@@ -872,8 +881,9 @@ REVOKE ALL ON FUNCTION public.admin_delete_staff(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.admin_delete_staff(uuid) TO authenticated;
 
 -- Deletes a store: removes its staff and unsold units, then soft-deletes the
--- store. A hard DELETE is blocked by historical rows (sales_order.store_id is
--- NOT NULL and sold units keep history), so the store is deactivated instead.
+-- store (is_deleted = true). A hard DELETE is blocked by historical rows
+-- (sales_order.store_id is NOT NULL and sold units keep history), so the store
+-- is marked deleted instead of removed.
 CREATE OR REPLACE FUNCTION public.admin_delete_store(p_id uuid, p_force boolean DEFAULT false)
 RETURNS json
 LANGUAGE plpgsql
@@ -922,7 +932,7 @@ BEGIN
     WHERE unit_id IN (SELECT id FROM public.inventory_unit WHERE current_store_id = p_id AND status <> 'sold');
   DELETE FROM public.inventory_unit WHERE current_store_id = p_id AND status <> 'sold';
 
-  UPDATE public.store SET is_active = false, updated_at = now() WHERE id = p_id;
+  UPDATE public.store SET is_active = false, is_deleted = true, updated_at = now() WHERE id = p_id;
   RETURN json_build_object('deleted', true);
 END;
 $$;

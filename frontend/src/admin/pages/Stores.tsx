@@ -141,15 +141,10 @@ export default function Stores() {
 
   const handleDelete = async (force: boolean) => {
     if (!deletedStore) return
-    const message = force
-      ? `Force delete ${deletedStore.name}? This removes staff and unsold inventory. Historical sales and movements remain.`
-      : `Delete ${deletedStore.name}? Historical records remain.`
-    if (window.confirm(message)) {
-      const ok = await deleteStore(deletedStore.id, force)
-      if (ok) {
-        setDeleteOpen(false)
-        setDeletedStore(null)
-      }
+    const ok = await deleteStore(deletedStore.id, force)
+    if (ok) {
+      setDeleteOpen(false)
+      setDeletedStore(null)
     }
   }
 
@@ -272,9 +267,14 @@ export default function Stores() {
 
       <Drawer open={deleteOpen} size="sheet" title="Delete location" subtitle="The location remains a read-only Deleted store reference in historical records." onClose={() => setDeleteOpen(false)} footer={<div className="modal-footer-actions"><button type="button" className="secondary-button" onClick={() => setDeleteOpen(false)}>Cancel</button>{deleteDependency.staff + deleteDependency.inventory === 0 ? <button type="button" className="primary-button" onClick={() => handleDelete(false)}>Delete location</button> : <button type="button" className="secondary-button danger-button" onClick={() => handleDelete(true)}>Force delete</button>}</div>}>
         <div className="delete-summary">
-          <p><strong>{deletedStore?.name}</strong> must be inactive before it can be deleted.</p>
-          {deleteDependency.staff + deleteDependency.inventory > 0 ? <ul><li>{deleteDependency.staff} staff assignment(s)</li><li>{deleteDependency.inventory} unsold inventory unit(s)</li></ul> : <p>No operational records will be removed.</p>}
-          <p>Force delete removes operational records only. Orders, payments, sales, and movement history remain.</p>
+          <p>Delete <strong>{deletedStore?.name}</strong>? This location is already inactive and will be removed from the locations list. Historical orders, payments, sales, and movement history remain.</p>
+          {deleteDependency.staff + deleteDependency.inventory > 0
+            ? <>
+                <p>This location still has operational records:</p>
+                <ul><li>{deleteDependency.staff} staff assignment(s)</li><li>{deleteDependency.inventory} unsold inventory unit(s)</li></ul>
+                <p>Force delete removes these operational records only. Orders, payments, sales, and movement history remain.</p>
+              </>
+            : <p>No staff or unsold inventory are attached.</p>}
         </div>
       </Drawer>
     </div>
