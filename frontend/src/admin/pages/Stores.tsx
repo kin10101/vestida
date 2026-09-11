@@ -199,11 +199,12 @@ export default function Stores() {
       </> : null}
 
       {tab === 'accounts' ? <>
-        <div className="manager-toolbar"><div className="toolbar-right full">{unconfigured.length > 0 ? <button type="button" className="primary-button" onClick={() => openAccountForm()}><KeyRound size={16} />Add account</button> : null}</div></div>
+        {unconfigured.length > 0 ? <div className="manager-toolbar"><div className="toolbar-right full"><button type="button" className="primary-button" onClick={() => openAccountForm()}><KeyRound size={16} />Add account</button></div></div> : null}
         <div className="record-stack compact">
           {accounts.length > 0 ? accounts.map((account) => {
             const configured = !!account.staffId
-            return <div key={account.authId} className="record-card stock-row">
+            const isSelf = account.authId === user?.authId
+            return <div key={account.authId} className={`record-card stock-row ${isSelf ? 'self-account' : ''}`}>
               <div className="record-main">
                 <strong>{configured ? account.displayName : account.email}</strong>
                 <small>{configured
@@ -214,7 +215,6 @@ export default function Stores() {
                 {configured
                   ? <StatusBadge label={account.role === 'admin' ? 'Admin' : 'Staff'} tone={account.role === 'admin' ? 'info' : 'neutral'} />
                   : <StatusBadge label="No profile" tone="warning" />}
-                {account.authId === user?.authId ? <StatusBadge label="You" tone="info" /> : null}
                 {configured ? <StatusBadge label={account.isActive ? 'Active' : 'Inactive'} tone={account.isActive ? 'success' : 'neutral'} /> : null}
               </div>
               <div className="record-actions compact-actions">
