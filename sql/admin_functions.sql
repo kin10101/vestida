@@ -416,8 +416,8 @@ BEGIN
   -- now() is transaction-stable, so all rows still share one created_at —
   -- the grouping the admin activity feed / Sales panels rely on is preserved.
   WITH new_units AS (
-    INSERT INTO public.inventory_unit (variant_id, unit_code, cost_price, current_store_id, status)
-    SELECT p_variant_id, NULL, p_cost_price_cents, p_store_id, 'in_stock'
+    INSERT INTO public.inventory_unit (variant_id, cost_price, current_store_id, status)
+    SELECT p_variant_id, p_cost_price_cents, p_store_id, 'in_stock'
     FROM generate_series(1, p_quantity)
     RETURNING id
   )

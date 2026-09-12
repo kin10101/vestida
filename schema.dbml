@@ -103,7 +103,6 @@ Table product_variant {
 Table inventory_unit {
   id uuid [pk, default: `gen_random_uuid()`]
   variant_id uuid [ref: > product_variant.id, not null]
-  unit_code varchar [unique, note: 'human-facing tag, e.g. "31702"']
   cost_price integer [not null, note: 'centavos; acquisition cost of THIS specific piece']
   current_store_id uuid [ref: > store.id, not null]
   status unit_status [not null, default: 'in_stock']

@@ -108,7 +108,7 @@ BEGIN
         FROM public.product_variant v
         LEFT JOIN public.product p ON p.id = v.product_id) x), '[]'::json),
       'inventoryUnits', COALESCE((SELECT json_agg(x) FROM (
-        SELECT id, variant_id AS "variantId", unit_code AS "unitCode",
+        SELECT id, variant_id AS "variantId",
                current_store_id AS "storeId", status,
                cost_price AS "costPriceCents", created_at::text AS "createdAt"
         FROM public.inventory_unit) x), '[]'::json),

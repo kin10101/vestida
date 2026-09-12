@@ -27,7 +27,6 @@ export interface ProductVariant {
 export interface InventoryUnit {
   id: string
   variant_id: string
-  unit_code: string | null
   cost_price: number
   current_store_id: string
   status: UnitStatus

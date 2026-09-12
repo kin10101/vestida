@@ -16,8 +16,12 @@ the short version plus the traps that have actually bitten this repo.
 | 6 | `admin_product_delete.sql` | 3 (`admin_delete_product_rows`) |
 | 7 | `seed.sql` *(optional)* | 2 |
 
-Then, only if needed: `repair_order_prices.sql` (a one-off data repair — read its
-diagnostic first).
+Then, only if needed:
+
+- `repair_order_prices.sql` — a one-off data repair; read its diagnostic first.
+- `reset_data.sql` — **⚠️ destructive**: truncates every public table (all rows),
+  keeping schema/RPCs/RLS. For resetting a dev DB. `auth.users` is untouched;
+  re-run `seed.sql` afterwards if needed.
 
 ## Who owns what (do not duplicate these)
 

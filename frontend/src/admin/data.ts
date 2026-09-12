@@ -51,7 +51,7 @@ export interface ProductVariant {
 export interface InventoryUnit {
   id: string
   variantId: string
-  unitCode: string
+  unitCode?: string | null
   storeId: string
   status: UnitStatus
   costPriceCents: number

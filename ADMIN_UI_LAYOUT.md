@@ -60,7 +60,7 @@ Reserve is scrapped and has no planned route.
 
 This is the physical-piece register — the layer staff never see directly.
 
-- Filters: store, status (`in_stock`, `sold`, `in_transit`), category/product/variant, search by `unit_code`.
+- Filters: store, status (`in_stock`, `sold`, `in_transit`), category/product/variant.
 - **New Stock / Intake** action: pick a variant + store, enter quantity and cost price — creates `inventory_unit` rows and a matching `received` `stock_movement` per unit.
 - **Manual adjustment** action: change a unit's supported status with a required note — writes an `adjustment` movement.
 - Row expand or detail page (`/admin/inventory/:unitId`) shows the unit's full movement history — the audit trail for that one physical piece.

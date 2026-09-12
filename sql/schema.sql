@@ -156,7 +156,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS "product_variant_matrix_key"
 CREATE TABLE IF NOT EXISTS "inventory_unit" (
   "id" uuid PRIMARY KEY DEFAULT (gen_random_uuid()),
   "variant_id" uuid NOT NULL,
-  "unit_code" varchar UNIQUE,
   "cost_price" integer NOT NULL,
   "current_store_id" uuid NOT NULL,
   "status" unit_status NOT NULL DEFAULT 'in_stock',
@@ -264,8 +263,6 @@ COMMENT ON COLUMN "category"."name" IS 'Barong, Gown, Suit, Pants, Accessories..
 COMMENT ON COLUMN "product"."name" IS 'e.g. "Barong Sports Collar", "Mestiza Top - Cazar"';
 
 COMMENT ON COLUMN "product_variant"."regular_price" IS 'centavos; reference/listed price only, never overwritten by a sale';
-
-COMMENT ON COLUMN "inventory_unit"."unit_code" IS 'human-facing tag, e.g. "31702"';
 
 COMMENT ON COLUMN "inventory_unit"."cost_price" IS 'centavos; acquisition cost of THIS specific piece';
 

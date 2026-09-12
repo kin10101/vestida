@@ -64,6 +64,7 @@ them when you actually hit the described problem.
 | Script | When to use |
 |--------|-------------|
 | `repair_order_prices.sql` | **Only if** historical `order_line_item.agreed_price` values were stored in **pesos** instead of **centavos** (symptom: admin/dashboard shows amounts at 1/100th, e.g. ₱12,200 shows as ₱122). Run its **diagnostic query first** to confirm, then the repair (×100). Re-running `supabase_functions_rls.sql` already prevents this for new sales. |
+| `reset_data.sql` | **⚠️ Destructive.** Wipes **all rows from every public table** (one `TRUNCATE … RESTART IDENTITY CASCADE`) but keeps the schema, RPCs and RLS policies. Use to reset a dev/demo database to empty. Does **not** touch `auth.users`, so login accounts survive; re-run `seed.sql` afterwards if you need the bootstrap store/staff link. |
 
 > Always verify the diagnostic output before running any data-repair UPDATE.
 
@@ -101,6 +102,8 @@ them when you actually hit the described problem.
 - If you ever run `DROP SCHEMA public CASCADE`, `schema.sql`’s opening block
   recreates the `public` schema and restores default privileges automatically —
   but it will **not** restore dropped data; re-seed after.
+- To clear data **without** dropping the schema, run `reset_data.sql` (optional
+  list above), then re-run `seed.sql` if you need the first store + admin link.
 - The old trap where re-running `admin_functions.sql` silently reverted the
   matrix RPCs is gone: `admin_get_state` and `admin_upsert_product` are defined
   **only** in `product_matrix.sql` now. Don't re-add them elsewhere.
